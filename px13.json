@@ -1,0 +1,56 @@
+{
+  "settings": {
+    "theme": "dark"
+  },
+  "servers": [
+    {
+      "name": "Test Server1",
+      "url": "opc.tcp://127.0.0.1:4840/freeopcua/server/",
+      "security_policy": "None",
+      "username": "",
+      "password": ""
+    },
+    {
+      "name": "aaaa",
+      "url": "opc.tcp://127.0.0.1:4842/freeopcua/server/",
+      "security_policy": "None",
+      "username": "",
+      "password": ""
+    },
+    {
+      "name": "bbbb",
+      "url": "opc.tcp://127.0.0.1:4841/freeopcua/server/",
+      "security_policy": "None",
+      "username": "",
+      "password": ""
+    }
+  ],
+  "favorites": [
+    {
+      "display_name": "aaa",
+      "node_id": "/Users/hamza/Desktop/opcua-qtclient/example_client.py",
+      "node_type": "Script",
+      "server_url": "",
+      "server_name": "",
+      "input_args": [
+        "127.0.0.1",
+        "4840",
+        "read",
+        "",
+        "",
+        "10",
+        "False"
+      ]
+    },
+    {
+      "display_name": "Start",
+      "node_id": "ns=2;i=13",
+      "node_type": "Method",
+      "server_url": "opc.tcp://127.0.0.1:4840/freeopcua/server/",
+      "server_name": "Test Server1",
+      "input_args": [
+        "asdas"
+      ]
+    }
+  ]
+}

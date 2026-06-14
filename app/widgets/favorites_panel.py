@@ -242,6 +242,12 @@ class FavoritesPanel(QWidget):
         self.title_label = QLabel("Favorites")
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
+
+        self.clear_all_btn = QPushButton("🗑 Clear All")
+        self.clear_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clear_all_btn.clicked.connect(self.clear_all)
+        header_layout.addWidget(self.clear_all_btn)
+
         panel_layout.addLayout(header_layout)
 
         # Scrollable list
@@ -282,6 +288,22 @@ class FavoritesPanel(QWidget):
             background: transparent;
         """)
 
+        self.clear_all_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: 1px solid {Colors.BORDER};
+                color: {Colors.TEXT_MUTED};
+                font-size: 11px;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.ERROR_BG};
+                color: {Colors.ERROR};
+                border-color: {Colors.ERROR};
+            }}
+        """)
+
     def add_favorite(self, node_id: str, display_name: str, node_type: NodeType,
                      server_url: str = "", server_name: str = "", args: list = None):
         """Add a node to favorites."""
@@ -299,6 +321,14 @@ class FavoritesPanel(QWidget):
             input_args=args or [],
         )
         self._add_card(item)
+        self._save_favorites()
+
+    def clear_all(self):
+        """Remove all favorites."""
+        for card in self._cards:
+            self.list_layout.removeWidget(card)
+            card.deleteLater()
+        self._cards.clear()
         self._save_favorites()
 
     def _add_card(self, item: FavoriteItem):

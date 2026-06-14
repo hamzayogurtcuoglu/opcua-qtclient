@@ -351,6 +351,12 @@ class ServerPanel(QWidget):
     def get_all_servers(self) -> list[ServerInfo]:
         return [card.server_info for card in self._cards]
 
+    def clear_servers(self):
+        for card in self._cards:
+            self.list_layout.removeWidget(card)
+            card.deleteLater()
+        self._cards.clear()
+
     def _filter_servers(self, text: str):
         """Filter server cards based on search text."""
         text = text.lower()

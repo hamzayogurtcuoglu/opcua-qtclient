@@ -389,6 +389,7 @@ def get_stylesheet() -> str:
         padding: 4px 6px;
         border-radius: 4px;
         margin: 1px 0px;
+        color: {Colors.TEXT_PRIMARY};
     }}
 
     QTreeWidget::item:selected, QTreeView::item:selected {{
@@ -429,6 +430,7 @@ def get_stylesheet() -> str:
     QTableWidget::item, QTableView::item {{
         padding: 4px 8px;
         border-bottom: 1px solid {Colors.BORDER};
+        color: {Colors.TEXT_PRIMARY};
     }}
 
     QTableWidget::item:selected, QTableView::item:selected {{

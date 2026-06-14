@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QSpinBox, QCheckBox, QComboBox,
@@ -14,6 +14,8 @@ from app.theme import Colors
 
 class SettingsDialog(QDialog):
     """Application settings dialog."""
+
+    wipe_all_requested = pyqtSignal()
 
     def __init__(self, settings: dict = None, parent: Optional[object] = None):
         super().__init__(parent)
@@ -99,6 +101,23 @@ class SettingsDialog(QDialog):
         ui_group.setLayout(ui_layout)
         layout.addWidget(ui_group)
 
+        # Data Management group
+        data_group = QGroupBox("Data Management")
+        data_layout = QVBoxLayout()
+        data_layout.setSpacing(12)
+        
+        wipe_info = QLabel("Delete all saved servers, favorites, scripts, and settings.")
+        wipe_info.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 11px;")
+        data_layout.addWidget(wipe_info)
+        
+        self.wipe_btn = QPushButton("🗑 Wipe All Data")
+        self.wipe_btn.setProperty("class", "danger")
+        self.wipe_btn.clicked.connect(self._on_wipe_all)
+        data_layout.addWidget(self.wipe_btn)
+        
+        data_group.setLayout(data_layout)
+        layout.addWidget(data_group)
+
         layout.addStretch()
 
         # Buttons
@@ -142,3 +161,16 @@ class SettingsDialog(QDialog):
 
     def get_settings(self) -> dict:
         return self._settings
+
+    def _on_wipe_all(self):
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self,
+            "Wipe All Data",
+            "Are you sure you want to delete all saved servers, favorites, and settings?\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.wipe_all_requested.emit()
+            self.reject()

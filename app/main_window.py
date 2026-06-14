@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QToolButton, QSplitter, QTabWidget,
     QStatusBar, QLabel, QPushButton, QMessageBox,
-    QApplication,
+    QApplication, QDockWidget, QSizePolicy, QFileDialog,
 )
 
 from app.models import (
@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(10, 10, 10, 10)
         content_layout.setSpacing(8)
 
-        # Central split view: Servers | Tabs | Favorites
+        # Central split view: Servers | Tabs
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setChildrenCollapsible(False)
 
@@ -92,16 +92,6 @@ class MainWindow(QMainWindow):
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.setDocumentMode(True)
         self.tab_widget.tabCloseRequested.connect(self._on_tab_close)
-        self.tab_widget.setStyleSheet(f"""
-            QTabWidget::pane {{
-                border: none;
-                background-color: transparent;
-            }}
-            QTabBar::tab {{
-                padding: 8px 20px;
-                font-size: 12px;
-            }}
-        """)
 
         # Add "+" button for new connection
         self.add_tab_btn = QPushButton("+")
@@ -112,25 +102,64 @@ class MainWindow(QMainWindow):
         self.tab_widget.setCornerWidget(self.add_tab_btn, Qt.Corner.TopRightCorner)
 
         self.main_splitter.addWidget(self.tab_widget)
+        self.main_splitter.setSizes([260, 900])
 
-        # Right: Favorites panel
+        content_layout.addWidget(self.main_splitter)
+        main_layout.addWidget(content_widget)
+
+        # ── Floating Dock: Favorites ──────────────────────────────────────────
         self.favorites_panel = FavoritesPanel()
         self.favorites_panel.favorite_clicked.connect(self._on_favorite_clicked)
-        self.main_splitter.addWidget(self.favorites_panel)
 
-        # Far right: Script Runner panel (hidden by default)
+        self.fav_dock = QDockWidget("⭐  Favorites", self)
+        self.fav_dock.setWidget(self.favorites_panel)
+        self.fav_dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea |
+            Qt.DockWidgetArea.RightDockWidgetArea |
+            Qt.DockWidgetArea.NoDockWidgetArea
+        )
+        self.fav_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+        )
+        self.fav_dock.setFloating(True)
+        self.fav_dock.resize(280, 500)
+        # Position top-right relative to window
+        self.fav_dock.move(
+            self.x() + self.width() - 310,
+            self.y() + 80
+        )
+        self.fav_dock.hide()
+        self.fav_dock.visibilityChanged.connect(self._on_fav_dock_visibility)
+
+        # ── Floating Dock: Script Runner ──────────────────────────────────────
         self.script_runner_panel = ScriptRunnerPanel()
-        self.script_runner_panel.hide()
         self.script_runner_panel.add_to_favorites.connect(
             lambda path, name, args: self.favorites_panel.add_script_favorite(path, name, args)
         )
-        self.main_splitter.addWidget(self.script_runner_panel)
 
-        # Set initial proportions
-        self.main_splitter.setSizes([260, 800, 260, 0])
-        
-        content_layout.addWidget(self.main_splitter)
-        main_layout.addWidget(content_widget)
+        self.runner_dock = QDockWidget("▶  Script Runner", self)
+        self.runner_dock.setWidget(self.script_runner_panel)
+        self.runner_dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea |
+            Qt.DockWidgetArea.RightDockWidgetArea |
+            Qt.DockWidgetArea.BottomDockWidgetArea |
+            Qt.DockWidgetArea.NoDockWidgetArea
+        )
+        self.runner_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+        )
+        self.runner_dock.setFloating(True)
+        self.runner_dock.resize(480, 600)
+        self.runner_dock.move(
+            self.x() + self.width() - 520,
+            self.y() + 80
+        )
+        self.runner_dock.hide()
+        self.runner_dock.visibilityChanged.connect(self._on_runner_dock_visibility)
 
         # Status bar
         self.statusBar().showMessage("Ready — No active connections")
@@ -150,6 +179,33 @@ class MainWindow(QMainWindow):
                 font-size: 12px;
             }}
         """)
+
+        dock_title_style = f"""
+            QDockWidget {{
+                font-weight: bold;
+                color: {Colors.TEXT_PRIMARY};
+                background-color: {Colors.BG_DARK};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 8px;
+            }}
+            QDockWidget::title {{
+                background-color: {Colors.BG_CARD};
+                padding: 6px 10px;
+                border-bottom: 1px solid {Colors.BORDER};
+                border-radius: 0;
+                font-weight: bold;
+                color: {Colors.TEXT_PRIMARY};
+            }}
+            QDockWidget::close-button {{
+                background: transparent;
+                border: none;
+                padding: 2px;
+            }}
+        """
+        if hasattr(self, 'fav_dock'):
+            self.fav_dock.setStyleSheet(dock_title_style)
+        if hasattr(self, 'runner_dock'):
+            self.runner_dock.setStyleSheet(dock_title_style)
 
         self.add_tab_btn.setStyleSheet(f"""
             QPushButton {{
@@ -235,13 +291,13 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(spacer)
 
         # Favorites toggle
-        fav_btn = QToolButton()
-        fav_btn.setText("⭐ Favorites")
-        fav_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        fav_btn.setCheckable(True)
-        fav_btn.setChecked(True)
-        fav_btn.toggled.connect(self._toggle_favorites)
-        self.toolbar.addWidget(fav_btn)
+        self.fav_btn = QToolButton()
+        self.fav_btn.setText("⭐ Favorites")
+        self.fav_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.fav_btn.setCheckable(True)
+        self.fav_btn.setChecked(False)
+        self.fav_btn.toggled.connect(self._toggle_favorites)
+        self.toolbar.addWidget(self.fav_btn)
 
         # Script Runner toggle
         self.script_runner_btn = QToolButton()
@@ -258,6 +314,21 @@ class MainWindow(QMainWindow):
         self.theme_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.theme_btn.clicked.connect(self._toggle_theme)
         self.toolbar.addWidget(self.theme_btn)
+
+        self.toolbar.addSeparator()
+
+        # Import/Export
+        import_btn = QToolButton()
+        import_btn.setText("📂 Import")
+        import_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        import_btn.clicked.connect(self._on_import_config)
+        self.toolbar.addWidget(import_btn)
+
+        export_btn = QToolButton()
+        export_btn.setText("💾 Export")
+        export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        export_btn.clicked.connect(self._on_export_config)
+        self.toolbar.addWidget(export_btn)
 
         # Settings
         settings_btn = QToolButton()
@@ -397,34 +468,133 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Refreshed all connections")
 
     def _toggle_favorites(self, visible: bool):
-        """Toggle favorites panel visibility."""
-        self.favorites_panel.setVisible(visible)
+        """Toggle favorites pop-up dock."""
+        if visible:
+            self.fav_dock.show()
+            self.fav_dock.raise_()
+        else:
+            self.fav_dock.hide()
+
+    def _on_fav_dock_visibility(self, visible: bool):
+        """Keep toolbar button in sync when dock is closed via its X button."""
+        self.fav_btn.blockSignals(True)
+        self.fav_btn.setChecked(visible)
+        self.fav_btn.blockSignals(False)
 
     def _toggle_script_runner(self, visible: bool):
-        """Toggle Script Runner panel visibility."""
-        self.script_runner_panel.setVisible(visible)
+        """Toggle Script Runner pop-up dock."""
         if visible:
-            sizes = self.main_splitter.sizes()
-            # Give script runner 320px, reduce center tab width accordingly
-            total = sum(sizes)
-            runner_width = 320
-            sizes[-1] = runner_width
-            if sizes[1] > runner_width:
-                sizes[1] -= runner_width
-            self.main_splitter.setSizes(sizes)
+            self.runner_dock.show()
+            self.runner_dock.raise_()
         else:
-            sizes = self.main_splitter.sizes()
-            sizes[1] += sizes[-1]
-            sizes[-1] = 0
-            self.main_splitter.setSizes(sizes)
+            self.runner_dock.hide()
+
+    def _on_runner_dock_visibility(self, visible: bool):
+        """Keep toolbar button in sync when dock is closed via its X button."""
+        self.script_runner_btn.blockSignals(True)
+        self.script_runner_btn.setChecked(visible)
+        self.script_runner_btn.blockSignals(False)
 
     def _on_settings(self):
         """Show settings dialog."""
         dialog = SettingsDialog(self._settings, self)
+        dialog.wipe_all_requested.connect(self._on_wipe_all)
         if dialog.exec():
             self._settings = dialog.get_settings()
             self._save_settings()
             self.statusBar().showMessage("Settings saved")
+
+    def _on_export_config(self):
+        """Export all settings, servers, and favorites to a single JSON file."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export Configuration", "", "JSON Files (*.json)"
+        )
+        if not file_path:
+            return
+
+        try:
+            from app.widgets.favorites_panel import FAVORITES_FILE
+            
+            data = {"settings": self._settings, "servers": [], "favorites": []}
+            
+            # Get servers
+            data["servers"] = [s.to_dict() for s in self.server_panel.get_all_servers()]
+            
+            # Get favorites
+            if os.path.exists(FAVORITES_FILE):
+                with open(FAVORITES_FILE, "r") as f:
+                    data["favorites"] = json.load(f)
+                    
+            with open(file_path, "w") as f:
+                json.dump(data, f, indent=2)
+                
+            self.statusBar().showMessage(f"Configuration exported to {os.path.basename(file_path)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export configuration:\n{e}")
+
+    def _on_import_config(self):
+        """Import settings, servers, and favorites from a single JSON file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import Configuration", "", "JSON Files (*.json)"
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, "r") as f:
+                data = json.load(f)
+                
+            # Wipe current UI state
+            self.server_panel.clear_servers()
+            self.favorites_panel.clear_all()
+            
+            # Load settings
+            if "settings" in data:
+                self._settings = data["settings"]
+                self._save_settings()
+                if "theme" in self._settings:
+                    theme_manager.apply_theme(self._settings["theme"])
+            
+            # Load servers
+            if "servers" in data:
+                for s_dict in data["servers"]:
+                    self.server_panel.add_server(ServerInfo.from_dict(s_dict))
+                self._save_servers()
+                
+            # Load favorites
+            if "favorites" in data:
+                from app.widgets.favorites_panel import FAVORITES_FILE
+                with open(FAVORITES_FILE, "w") as f:
+                    json.dump(data["favorites"], f)
+                # Need to refresh favorites panel directly
+                for item_data in data["favorites"]:
+                    from app.models import FavoriteItem
+                    self.favorites_panel._add_card(FavoriteItem.from_dict(item_data))
+                    
+            self.statusBar().showMessage(f"Configuration imported from {os.path.basename(file_path)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", f"Failed to import configuration:\n{e}")
+
+    def _on_wipe_all(self):
+        """Wipe all user data."""
+        from app.widgets.favorites_panel import FAVORITES_FILE
+        
+        # Disconnect all
+        for url in list(self._tabs.keys()):
+            self._on_disconnect_url(url)
+            
+        self.server_panel.clear_servers()
+        self.favorites_panel.clear_all()
+        self._settings = {}
+        
+        # Delete files
+        for f in [SERVERS_FILE, SETTINGS_FILE, FAVORITES_FILE]:
+            if os.path.exists(f):
+                os.remove(f)
+                
+        # Revert to default theme
+        theme_manager.apply_theme("dark")
+        self.statusBar().showMessage("All data has been wiped.")
 
     def _on_favorite_clicked(self, item: FavoriteItem):
         """Navigate to a favorited node in its server's tree or load a script."""
@@ -435,26 +605,78 @@ class MainWindow(QMainWindow):
             self.script_runner_panel._on_run()
             return
 
-        async def load_and_populate(tab):
-            await tab._load_node_info(item.node_id)
-            if item.node_type == NodeType.METHOD:
-                if item.input_args:
-                    tab.node_info.call_method_tab.populate_saved_args(item.input_args)
-                tab.node_info.call_method_tab._on_call()
+        asyncio.ensure_future(self._activate_favorite(item))
 
-        # Find the tab for this server if it matches
+    async def _activate_favorite(self, item: FavoriteItem):
+        """Ensure server connected and then call method / load node."""
+        # 1. Find which tab to use
+        tab = None
         if item.server_url and item.server_url in self._tabs:
             tab = self._tabs[item.server_url]
-            idx = self.tab_widget.indexOf(tab)
-            if idx >= 0:
-                self.tab_widget.setCurrentIndex(idx)
-                asyncio.ensure_future(load_and_populate(tab))
-        else:
-            # Fallback: try active tab
+        elif item.server_url:
+            # Not connected yet — try to auto-connect
+            server_info = next(
+                (s for s in self.server_panel.get_all_servers() if s.url == item.server_url),
+                None
+            )
+            if server_info:
+                self.statusBar().showMessage(f"Auto-connecting to {server_info.name}…")
+                await self._connect_server(server_info)
+                tab = self._tabs.get(item.server_url)
+            else:
+                self.statusBar().showMessage(
+                    f"⚠️  Server {item.server_url} not found in server list."
+                )
+
+        # Fallback: use currently active tab
+        if tab is None:
             idx = self.tab_widget.currentIndex()
             if idx >= 0:
                 tab = self.tab_widget.widget(idx)
-                asyncio.ensure_future(load_and_populate(tab))
+
+        if tab is None:
+            self.statusBar().showMessage(
+                "⚠️  Connect to a server first, or add it to the server list."
+            )
+            return
+
+        # Switch to the tab
+        idx = self.tab_widget.indexOf(tab)
+        if idx >= 0:
+            self.tab_widget.setCurrentIndex(idx)
+
+        # 2. Load node info
+        try:
+            info = await tab.opcua_client.read_node_attributes(
+                item.node_id, tab.server_name
+            )
+            tab.node_info.update_node(info)
+        except Exception:
+            pass
+
+        if item.node_type == NodeType.METHOD:
+            # 3. Load method arguments from server
+            try:
+                input_args, output_args = await tab.opcua_client.get_method_arguments(
+                    item.node_id
+                )
+                parent_id = await tab.opcua_client.get_parent_node_id(item.node_id)
+            except Exception:
+                input_args, output_args, parent_id = [], [], None
+
+            if parent_id:
+                display = item.display_name or item.node_id
+                tab.node_info.set_method(
+                    item.node_id, display, parent_id, input_args, output_args
+                )
+
+            # 4. Restore saved args
+            if item.input_args:
+                tab.node_info.call_method_tab.populate_saved_args(item.input_args)
+
+            # 5. Call the method
+            tab.node_info.call_method_tab._on_call()
+
 
     def _on_error(self, operation: str, message: str):
         """Handle OPC UA errors."""
