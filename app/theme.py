@@ -5,78 +5,78 @@ from PyQt6.QtWidgets import QApplication
 
 DARK_PALETTE = {
     # Backgrounds
-    "BG_DARKEST": "#0f1117",
-    "BG_DARK": "#161b22",
-    "BG_MEDIUM": "#1c2333",
-    "BG_CARD": "#1e293b",
-    "BG_SURFACE": "#243044",
-    "BG_HOVER": "#2a3a52",
-    "BG_INPUT": "#131a27",
+    "BG_DARKEST": "#0b0f19",    # Very deep navy/grey
+    "BG_DARK": "#111827",       # Gray-900
+    "BG_MEDIUM": "#1f2937",     # Gray-800
+    "BG_CARD": "#1f2937",       # Gray-800
+    "BG_SURFACE": "#374151",    # Gray-700
+    "BG_HOVER": "#374151",      # Gray-700
+    "BG_INPUT": "#111827",      # Gray-900
     # Borders
-    "BORDER": "#2d3748",
-    "BORDER_LIGHT": "#3a4a5e",
-    "BORDER_FOCUS": "#4f8cff",
+    "BORDER": "#374151",        # Gray-700
+    "BORDER_LIGHT": "#4b5563",  # Gray-600
+    "BORDER_FOCUS": "#6366f1",  # Indigo-500
     # Text
-    "TEXT_PRIMARY": "#e2e8f0",
-    "TEXT_SECONDARY": "#94a3b8",
-    "TEXT_MUTED": "#64748b",
-    "TEXT_BRIGHT": "#f8fafc",
+    "TEXT_PRIMARY": "#f9fafb",  # Gray-50
+    "TEXT_SECONDARY": "#9ca3af",# Gray-400
+    "TEXT_MUTED": "#6b7280",    # Gray-500
+    "TEXT_BRIGHT": "#ffffff",   # Pure white
     # Accent / Primary
-    "ACCENT": "#4f8cff",
-    "ACCENT_HOVER": "#6ba1ff",
-    "ACCENT_DARK": "#3b6fd4",
+    "ACCENT": "#6366f1",        # Indigo-500
+    "ACCENT_HOVER": "#818cf8",  # Indigo-400
+    "ACCENT_DARK": "#4f46e5",   # Indigo-600
     # Status colors
-    "SUCCESS": "#22c55e",
-    "SUCCESS_BG": "#15392b",
-    "WARNING": "#f59e0b",
-    "WARNING_BG": "#3d2f0a",
-    "ERROR": "#ef4444",
-    "ERROR_BG": "#3d1515",
+    "SUCCESS": "#10b981",       # Emerald-500
+    "SUCCESS_BG": "#064e3b",    # Emerald-900
+    "WARNING": "#f59e0b",       # Amber-500
+    "WARNING_BG": "#78350f",    # Amber-900
+    "ERROR": "#ef4444",         # Red-500
+    "ERROR_BG": "#7f1d1d",      # Red-900
     # Node type colors
     "NODE_OBJECT": "#f59e0b",
-    "NODE_VARIABLE": "#4f8cff",
+    "NODE_VARIABLE": "#3b82f6",
     "NODE_METHOD": "#a855f7",
     "NODE_VIEW": "#06b6d4",
     # Badges
-    "BADGE_VARIABLE": "#1e40af",
-    "BADGE_VARIABLE_TEXT": "#93c5fd",
-    "BADGE_METHOD": "#6b21a8",
-    "BADGE_METHOD_TEXT": "#c4b5fd",
+    "BADGE_VARIABLE": "#1e3a8a",
+    "BADGE_VARIABLE_TEXT": "#bfdbfe",
+    "BADGE_METHOD": "#581c87",
+    "BADGE_METHOD_TEXT": "#e9d5ff",
     # Scrollbar
-    "SCROLLBAR_BG": "#1c2333",
-    "SCROLLBAR_HANDLE": "#3a4a5e",
-    "SCROLLBAR_HOVER": "#4a5a6e",
+    "SCROLLBAR_BG": "transparent",
+    "SCROLLBAR_HANDLE": "#4b5563",
+    "SCROLLBAR_HOVER": "#6b7280",
 }
 
 LIGHT_PALETTE = {
     # Backgrounds
-    "BG_DARKEST": "#f8fafc",
-    "BG_DARK": "#f1f5f9",
-    "BG_MEDIUM": "#e2e8f0",
-    "BG_CARD": "#ffffff",
-    "BG_SURFACE": "#f1f5f9",
-    "BG_HOVER": "#e2e8f0",
-    "BG_INPUT": "#ffffff",
+    "BG_DARKEST": "#f3f4f6",    # Gray-100
+    "BG_DARK": "#f9fafb",       # Gray-50
+    "BG_MEDIUM": "#e5e7eb",     # Gray-200
+    "BG_CARD": "#ffffff",       # White
+    "BG_SURFACE": "#f3f4f6",    # Gray-100
+    "BG_HOVER": "#e5e7eb",      # Gray-200
+    "BG_INPUT": "#ffffff",      # White
     # Borders
-    "BORDER": "#cbd5e1",
-    "BORDER_LIGHT": "#94a3b8",
-    "BORDER_FOCUS": "#3b82f6",
+    "BORDER": "#e5e7eb",        # Gray-200
+    "BORDER_LIGHT": "#d1d5db",  # Gray-300
+    "BORDER_FOCUS": "#6366f1",  # Indigo-500
     # Text
-    "TEXT_PRIMARY": "#0f172a",
-    "TEXT_SECONDARY": "#475569",
-    "TEXT_MUTED": "#64748b",
-    "TEXT_BRIGHT": "#000000",
+    "TEXT_PRIMARY": "#111827",  # Gray-900
+    "TEXT_SECONDARY": "#4b5563",# Gray-600
+    "TEXT_MUTED": "#9ca3af",    # Gray-400
+    "TEXT_BRIGHT": "#000000",   # Pure black
     # Accent / Primary
-    "ACCENT": "#3b82f6",
-    "ACCENT_HOVER": "#2563eb",
-    "ACCENT_DARK": "#1d4ed8",
+    "ACCENT": "#4f46e5",        # Indigo-600
+    "ACCENT_HOVER": "#6366f1",  # Indigo-500
+    "ACCENT_DARK": "#4338ca",   # Indigo-700
     # Status colors
-    "SUCCESS": "#16a34a",
-    "SUCCESS_BG": "#dcfce7",
-    "WARNING": "#d97706",
-    "WARNING_BG": "#fef3c7",
-    "ERROR": "#dc2626",
-    "ERROR_BG": "#fee2e2",
+    "SUCCESS": "#059669",       # Emerald-600
+    "SUCCESS_BG": "#d1fae5",    # Emerald-100
+    "WARNING": "#d97706",       # Amber-600
+    "WARNING_BG": "#fef3c7",    # Amber-100
+    "ERROR": "#dc2626",         # Red-600
+    "ERROR_BG": "#fee2e2",      # Red-100
     # Node type colors
     "NODE_OBJECT": "#d97706",
     "NODE_VARIABLE": "#2563eb",
@@ -88,9 +88,9 @@ LIGHT_PALETTE = {
     "BADGE_METHOD": "#f3e8ff",
     "BADGE_METHOD_TEXT": "#6b21a8",
     # Scrollbar
-    "SCROLLBAR_BG": "#e2e8f0",
-    "SCROLLBAR_HANDLE": "#94a3b8",
-    "SCROLLBAR_HOVER": "#64748b",
+    "SCROLLBAR_BG": "transparent",
+    "SCROLLBAR_HANDLE": "#d1d5db",
+    "SCROLLBAR_HOVER": "#9ca3af",
 }
 
 
@@ -170,8 +170,8 @@ def get_stylesheet() -> str:
     return f"""
     /* ===== Global ===== */
     * {{
-        font-family: 'Helvetica Neue', 'Helvetica', 'Arial';
-        font-size: 13px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Inter", "Helvetica Neue", Arial, sans-serif;
+        font-size: 14px;
     }}
 
     QMainWindow {{
@@ -211,19 +211,19 @@ def get_stylesheet() -> str:
 
     /* ===== Frames / Group Boxes ===== */
     QFrame[frameShape="6"] {{ /* StyledPanel */
-        background-color: {Colors.BG_DARK};
-        border: 1px solid {Colors.BORDER};
-        border-radius: 10px;
+        background-color: {Colors.BG_CARD};
+        border: none;
+        border-radius: 12px;
     }}
 
     QGroupBox {{
-        background-color: {Colors.BG_DARK};
+        background-color: {Colors.BG_CARD};
         border: 1px solid {Colors.BORDER};
-        border-radius: 10px;
-        margin-top: 16px;
-        padding: 16px 10px 10px 10px;
-        font-weight: bold;
-        font-size: 13px;
+        border-radius: 12px;
+        margin-top: 18px;
+        padding: 16px 12px 12px 12px;
+        font-weight: 600;
+        font-size: 14px;
         color: {Colors.TEXT_PRIMARY};
     }}
 
@@ -261,8 +261,8 @@ def get_stylesheet() -> str:
         color: {Colors.TEXT_PRIMARY};
         border: 1px solid {Colors.BORDER};
         border-radius: 8px;
-        padding: 7px 12px;
-        font-size: 12px;
+        padding: 8px 12px;
+        font-size: 13px;
         selection-background-color: {Colors.ACCENT};
     }}
 
@@ -278,11 +278,11 @@ def get_stylesheet() -> str:
     QPushButton {{
         background-color: {Colors.BG_SURFACE};
         color: {Colors.TEXT_PRIMARY};
-        border: 1px solid {Colors.BORDER};
+        border: none;
         border-radius: 8px;
-        padding: 7px 16px;
-        font-size: 12px;
-        font-weight: 500;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
     }}
 
     QPushButton:hover {{
@@ -304,7 +304,7 @@ def get_stylesheet() -> str:
         background-color: {Colors.ACCENT};
         color: white;
         border: none;
-        font-weight: bold;
+        font-weight: 600;
     }}
 
     QPushButton[class="primary"]:hover {{
@@ -353,9 +353,10 @@ def get_stylesheet() -> str:
         color: {Colors.TEXT_SECONDARY};
         border: none;
         border-bottom: 2px solid transparent;
-        padding: 8px 16px;
-        margin-right: 2px;
-        font-size: 12px;
+        padding: 10px 16px;
+        margin-right: 4px;
+        font-size: 13px;
+        font-weight: 500;
     }}
 
     QTabBar::tab:selected {{
@@ -376,13 +377,12 @@ def get_stylesheet() -> str:
 
     /* ===== Tree Widget ===== */
     QTreeWidget, QTreeView {{
-        background-color: {Colors.BG_DARK};
+        background-color: transparent;
         color: {Colors.TEXT_PRIMARY};
-        border: 1px solid {Colors.BORDER};
-        border-radius: 8px;
+        border: none;
         outline: none;
         padding: 4px;
-        font-size: 12px;
+        font-size: 13px;
     }}
 
     QTreeWidget::item, QTreeView::item {{
@@ -418,13 +418,12 @@ def get_stylesheet() -> str:
 
     /* ===== Table Widget ===== */
     QTableWidget, QTableView {{
-        background-color: {Colors.BG_DARK};
+        background-color: transparent;
         color: {Colors.TEXT_PRIMARY};
-        border: 1px solid {Colors.BORDER};
-        border-radius: 8px;
+        border: none;
         gridline-color: {Colors.BORDER};
         outline: none;
-        font-size: 12px;
+        font-size: 13px;
     }}
 
     QTableWidget::item, QTableView::item {{
@@ -506,8 +505,8 @@ def get_stylesheet() -> str:
         color: {Colors.TEXT_PRIMARY};
         border: 1px solid {Colors.BORDER};
         border-radius: 8px;
-        padding: 6px 12px;
-        font-size: 12px;
+        padding: 8px 12px;
+        font-size: 13px;
         min-width: 100px;
     }}
 
@@ -544,8 +543,8 @@ def get_stylesheet() -> str:
         background-color: {Colors.BG_INPUT};
         color: {Colors.TEXT_PRIMARY};
         border: 1px solid {Colors.BORDER};
-        border-radius: 6px;
-        padding: 4px 8px;
+        border-radius: 8px;
+        padding: 6px 10px;
     }}
 
     QSpinBox:focus, QDoubleSpinBox:focus {{
