@@ -215,12 +215,13 @@ def detect_script_args(script_path: str) -> tuple[list[dict], str]:
 class ScriptRunnerPanel(QWidget):
     """Side panel for loading and running Python scripts."""
 
-    # Emits (script_path, display_name, args_list) when user clicks Favorite
-    add_to_favorites = pyqtSignal(str, str, list)
+    # Emits (script_path, display_name, args_list, script_content) when user clicks Favorite
+    add_to_favorites = pyqtSignal(str, str, list, str)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._script_path: Optional[str] = None
+        self._script_content: str = ""
         self._args_data: list[dict] = []
         self._process: Optional[QProcess] = None
         self._setup_ui()
@@ -579,11 +580,30 @@ class ScriptRunnerPanel(QWidget):
 
         self.load_script(path)
 
-    def load_script(self, path: str, saved_args: list = None):
+    def load_script(self, path: str, saved_args: list = None, script_content: str = "") -> bool:
         """Load a script file and populate arguments."""
+        self._script_content = script_content
+        
+        # If we have content but the path doesn't exist (e.g. imported on another PC)
+        # we write it to a temporary file to run it.
+        if script_content and not os.path.exists(path):
+            import tempfile
+            fd, tmp_path = tempfile.mkstemp(suffix=".py", prefix="opcua_script_")
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(script_content)
+            path = tmp_path
+            
         if not os.path.exists(path):
             self._append_output(f"[Error] File not found: {path}\n", error=True)
-            return
+            return False
+
+        # If we don't have content, read it now so we can save it to favorites later
+        if not self._script_content:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    self._script_content = f.read()
+            except Exception:
+                pass
 
         self._script_path = path
         filename = os.path.basename(path)
@@ -609,6 +629,8 @@ class ScriptRunnerPanel(QWidget):
                         item = self.args_table.item(i, 2)
                         if item:
                             item.setText(str(val))
+
+        return True
 
     def _load_args(self, path: str):
         """Detect and display script arguments."""
@@ -775,7 +797,7 @@ class ScriptRunnerPanel(QWidget):
                 else:
                     item = self.args_table.item(i, 2)
                     saved_args.append(item.text() if item else "")
-            self.add_to_favorites.emit(self._script_path, name.strip(), saved_args)
+            self.add_to_favorites.emit(self._script_path, name.strip(), saved_args, self._script_content)
 
     # ── Output ────────────────────────────────────────────────────────────────
 

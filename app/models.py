@@ -101,6 +101,7 @@ class FavoriteItem:
     server_url: str = ""
     server_name: str = ""
     input_args: list = field(default_factory=list)
+    script_content: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -110,6 +111,7 @@ class FavoriteItem:
             "server_url": self.server_url,
             "server_name": self.server_name,
             "input_args": self.input_args,
+            "script_content": self.script_content,
         }
 
     @classmethod
@@ -125,6 +127,7 @@ class FavoriteItem:
             server_url=data.get("server_url", ""),
             server_name=data.get("server_name", ""),
             input_args=data.get("input_args", []),
+            script_content=data.get("script_content", ""),
         )
 
 

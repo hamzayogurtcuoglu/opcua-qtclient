@@ -184,8 +184,10 @@ class PropertiesTab(QWidget):
             )
 
 
-class ValueTab(QWidget):
-    """Shows and auto-refreshes the current value of a variable node."""
+class DataAccessTab(QWidget):
+    """Combined tab for reading (auto-refreshing) and writing values to variable nodes."""
+
+    value_written = pyqtSignal(str, str)  # node_id, value string
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -198,52 +200,93 @@ class ValueTab(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(16)
 
-        # Current value
+        # ---- READ SECTION ----
+        read_group = QFrame()
+        read_layout = QVBoxLayout(read_group)
+        read_layout.setContentsMargins(12, 12, 12, 12)
+        read_layout.setSpacing(8)
+
+        header_layout = QHBoxLayout()
         self.val_label = QLabel("Current Value")
-        layout.addWidget(self.val_label)
-
-        self.value_display = QTextEdit()
-        self.value_display.setReadOnly(True)
-        self.value_display.setMaximumHeight(120)
-        layout.addWidget(self.value_display)
-
-        # Data type
-        type_layout = QHBoxLayout()
-        self.type_label = QLabel("Data Type:")
-        self.type_display = QLabel("—")
-        type_layout.addWidget(self.type_label)
-        type_layout.addWidget(self.type_display)
-        type_layout.addStretch()
-        layout.addLayout(type_layout)
-
-        # Auto-refresh controls
-        refresh_layout = QHBoxLayout()
-        self.refresh_btn = QPushButton("⟳ Refresh")
-        self.refresh_btn.setProperty("class", "primary")
-        self.refresh_btn.clicked.connect(self._on_manual_refresh)
-        refresh_layout.addWidget(self.refresh_btn)
-
-        refresh_layout.addStretch()
-
+        header_layout.addWidget(self.val_label)
+        
+        header_layout.addStretch()
+        
         self.auto_label = QLabel("Auto-refresh:")
-        refresh_layout.addWidget(self.auto_label)
-
+        header_layout.addWidget(self.auto_label)
+        
         self.interval_spin = QSpinBox()
         self.interval_spin.setRange(0, 60)
         self.interval_spin.setValue(0)
         self.interval_spin.setSuffix("s")
         self.interval_spin.setToolTip("Set to 0 to disable auto-refresh")
         self.interval_spin.valueChanged.connect(self._on_interval_changed)
-        refresh_layout.addWidget(self.interval_spin)
+        header_layout.addWidget(self.interval_spin)
+        
+        self.refresh_btn = QPushButton("⟳ Refresh")
+        self.refresh_btn.setProperty("class", "primary")
+        self.refresh_btn.clicked.connect(self._on_manual_refresh)
+        header_layout.addWidget(self.refresh_btn)
 
-        layout.addLayout(refresh_layout)
+        read_layout.addLayout(header_layout)
 
-        # Timestamp
+        self.value_display = QTextEdit()
+        self.value_display.setReadOnly(True)
+        self.value_display.setMaximumHeight(80)
+        read_layout.addWidget(self.value_display)
+
+        footer_layout = QHBoxLayout()
+        self.type_display = QLabel("Type: —")
+        footer_layout.addWidget(self.type_display)
+        footer_layout.addStretch()
         self.timestamp_label = QLabel("Last updated: —")
-        layout.addWidget(self.timestamp_label)
+        footer_layout.addWidget(self.timestamp_label)
+        read_layout.addLayout(footer_layout)
+
+        layout.addWidget(read_group)
+
+        # ---- WRITE SECTION ----
+        write_group = QFrame()
+        write_layout = QVBoxLayout(write_group)
+        write_layout.setContentsMargins(12, 12, 12, 12)
+        write_layout.setSpacing(8)
+
+        self.write_title = QLabel("Write New Value")
+        write_layout.addWidget(self.write_title)
+
+        form_layout = QHBoxLayout()
+        
+        self.type_combo = QComboBox()
+        self.type_combo.addItems([
+            "String", "Boolean", "Int16", "Int32", "Int64",
+            "UInt16", "UInt32", "UInt64", "Float", "Double",
+            "Byte", "ByteString", "DateTime",
+        ])
+        self.type_combo.setFixedWidth(100)
+        form_layout.addWidget(self.type_combo)
+
+        self.value_input = QLineEdit()
+        self.value_input.setPlaceholderText("Enter value to write...")
+        form_layout.addWidget(self.value_input)
+
+        self.write_btn = QPushButton("✏️ Write")
+        self.write_btn.setProperty("class", "primary")
+        self.write_btn.clicked.connect(self._on_write)
+        form_layout.addWidget(self.write_btn)
+
+        write_layout.addLayout(form_layout)
+
+        self.status_label = QLabel("")
+        write_layout.addWidget(self.status_label)
+
+        layout.addWidget(write_group)
+
+        # Style reference for the frames
+        self.read_group = read_group
+        self.write_group = write_group
 
         layout.addStretch()
 
@@ -251,43 +294,63 @@ class ValueTab(QWidget):
         theme_manager.theme_changed.connect(self.update_theme)
 
     def update_theme(self):
-        self.val_label.setStyleSheet(f"""
-            font-size: 13px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
+        card_style = f"""
+            QFrame {{
+                background-color: {Colors.BG_CARD};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 8px;
+            }}
+        """
+        self.read_group.setStyleSheet(card_style)
+        self.write_group.setStyleSheet(card_style)
+
+        self.val_label.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {Colors.TEXT_PRIMARY}; border: none;")
+        self.write_title.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {Colors.TEXT_PRIMARY}; border: none;")
 
         self.value_display.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {Colors.BG_INPUT};
                 border: 1px solid {Colors.BORDER};
-                border-radius: 8px;
-                padding: 10px;
+                border-radius: 6px;
+                padding: 6px;
                 font-family: 'Menlo', 'Courier New', 'Courier';
-                font-size: 14px;
+                font-size: 13px;
                 color: {Colors.ACCENT};
             }}
         """)
 
-        self.type_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
-        self.type_display.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; background: transparent; font-weight: bold;")
-        self.auto_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
-        self.timestamp_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 11px; background: transparent;")
+        self.type_display.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: 11px; font-weight: bold; border: none;")
+        self.auto_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; border: none;")
+        self.timestamp_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 11px; border: none;")
+
+        if not self.status_label.text():
+            self.status_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; border: none;")
+        elif "❌" in self.status_label.text():
+            self.status_label.setStyleSheet(f"color: {Colors.ERROR}; border: none;")
+        else:
+            self.status_label.setStyleSheet(f"color: {Colors.SUCCESS}; border: none;")
 
     def set_client(self, client, server_name: str = ""):
         self._opcua_client = client
         self._server_name = server_name
 
     def set_node(self, node_id: str, info: NodeInfo):
-        """Set the node whose value to display."""
         self._node_id = node_id
+        
+        # Read part
         if info.value is not None:
             self.value_display.setText(str(info.value))
+            self.value_input.setText(str(info.value))
         else:
             self.value_display.setText("—")
-        self.type_display.setText(info.data_type if info.data_type else "—")
+        self.type_display.setText(f"Type: {info.data_type if info.data_type else '—'}")
         self._update_timestamp()
+
+        # Write part
+        if info.data_type:
+            idx = self.type_combo.findText(info.data_type)
+            if idx >= 0:
+                self.type_combo.setCurrentIndex(idx)
 
     def _on_manual_refresh(self):
         if self._node_id and self._opcua_client:
@@ -318,97 +381,6 @@ class ValueTab(QWidget):
     def stop_auto_refresh(self):
         self._auto_refresh_timer.stop()
 
-
-class WriteTab(QWidget):
-    """Tab for writing values to variable nodes."""
-
-    value_written = pyqtSignal(str, str)  # node_id, value string
-
-    def __init__(self, parent: Optional[QWidget] = None):
-        super().__init__(parent)
-        self._node_id: Optional[str] = None
-        self._opcua_client = None
-        self._server_name = ""
-        self._setup_ui()
-
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
-
-        # Node ID
-        node_layout = QFormLayout()
-        self.node_id_label = QLabel("—")
-        node_layout.addRow("NodeId:", self.node_id_label)
-        layout.addLayout(node_layout)
-
-        # Data type
-        self.type_label = QLabel("Data Type")
-        layout.addWidget(self.type_label)
-
-        self.type_combo = QComboBox()
-        self.type_combo.addItems([
-            "String", "Boolean", "Int16", "Int32", "Int64",
-            "UInt16", "UInt32", "UInt64", "Float", "Double",
-            "Byte", "ByteString", "DateTime",
-        ])
-        layout.addWidget(self.type_combo)
-
-        # Value input
-        self.value_label = QLabel("Value")
-        layout.addWidget(self.value_label)
-
-        self.value_input = QLineEdit()
-        self.value_input.setPlaceholderText("Enter value to write...")
-        layout.addWidget(self.value_input)
-
-        # Write button
-        btn_layout = QHBoxLayout()
-        self.write_btn = QPushButton("✏️ Write")
-        self.write_btn.setProperty("class", "primary")
-        self.write_btn.setMinimumWidth(120)
-        self.write_btn.clicked.connect(self._on_write)
-        btn_layout.addWidget(self.write_btn)
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-
-        # Status
-        self.status_label = QLabel("")
-        layout.addWidget(self.status_label)
-
-        layout.addStretch()
-
-        self.update_theme()
-        theme_manager.theme_changed.connect(self.update_theme)
-
-    def update_theme(self):
-        self.node_id_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
-        self.type_label.setStyleSheet(f"font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;")
-        self.value_label.setStyleSheet(f"font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;")
-        
-        # We only set default color, status might overwrite it if error, but wait, error status sets it directly.
-        # So we leave status_label as is unless it's empty.
-        if not self.status_label.text():
-            self.status_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; background: transparent;")
-        elif "❌" in self.status_label.text():
-            self.status_label.setStyleSheet(f"color: {Colors.ERROR}; background: transparent;")
-        else:
-            self.status_label.setStyleSheet(f"color: {Colors.SUCCESS}; background: transparent;")
-
-    def set_client(self, client, server_name: str = ""):
-        self._opcua_client = client
-        self._server_name = server_name
-
-    def set_node(self, node_id: str, info: NodeInfo):
-        self._node_id = node_id
-        self.node_id_label.setText(node_id)
-        if info.data_type:
-            idx = self.type_combo.findText(info.data_type)
-            if idx >= 0:
-                self.type_combo.setCurrentIndex(idx)
-        if info.value is not None:
-            self.value_input.setText(str(info.value))
-
     def _on_write(self):
         if self._node_id and self._opcua_client:
             asyncio.ensure_future(self._write_value())
@@ -420,12 +392,11 @@ class WriteTab(QWidget):
         raw_value = self.value_input.text()
         data_type = self.type_combo.currentText()
 
-        # Convert value based on data type
         try:
             value = self._convert_value(raw_value, data_type)
         except Exception as e:
             self.status_label.setText(f"❌ Invalid value: {e}")
-            self.status_label.setStyleSheet(f"color: {Colors.ERROR}; background: transparent;")
+            self.status_label.setStyleSheet(f"color: {Colors.ERROR}; border: none;")
             return
 
         success = await self._opcua_client.write_value(
@@ -434,11 +405,14 @@ class WriteTab(QWidget):
 
         if success:
             self.status_label.setText(f"✅ Value written successfully")
-            self.status_label.setStyleSheet(f"color: {Colors.SUCCESS}; background: transparent;")
+            self.status_label.setStyleSheet(f"color: {Colors.SUCCESS}; border: none;")
             self.value_written.emit(self._node_id, raw_value)
+            # update read display as well
+            self.value_display.setText(raw_value)
+            self._update_timestamp()
         else:
             self.status_label.setText(f"❌ Write failed")
-            self.status_label.setStyleSheet(f"color: {Colors.ERROR}; background: transparent;")
+            self.status_label.setStyleSheet(f"color: {Colors.ERROR}; border: none;")
 
     def _convert_value(self, raw: str, data_type: str) -> Any:
         converters = {
@@ -453,6 +427,7 @@ class WriteTab(QWidget):
             "Float": float,
             "Double": float,
             "Byte": int,
+            "ByteString": lambda v: bytes(v, "utf-8"),
         }
         converter = converters.get(data_type, str)
         return converter(raw)
@@ -823,13 +798,11 @@ class NodeInfoWidget(QWidget):
 
         # Create tabs
         self.properties_tab = PropertiesTab()
-        self.value_tab = ValueTab()
-        self.write_tab = WriteTab()
+        self.data_access_tab = DataAccessTab()
         self.call_method_tab = CallMethodTab()
 
         self.tabs.addTab(self.properties_tab, "Properties")
-        self.tabs.addTab(self.value_tab, "Value")
-        self.tabs.addTab(self.write_tab, "Write")
+        self.tabs.addTab(self.data_access_tab, "Data Access")
         self.tabs.addTab(self.call_method_tab, "Call Method")
 
         # Forward favorites signals
@@ -841,15 +814,13 @@ class NodeInfoWidget(QWidget):
         layout.addWidget(self.tabs)
 
     def set_client(self, client, server_name: str = ""):
-        self.value_tab.set_client(client, server_name)
-        self.write_tab.set_client(client, server_name)
+        self.data_access_tab.set_client(client, server_name)
         self.call_method_tab.set_client(client, server_name)
 
     def update_node(self, info: NodeInfo):
         """Update all tabs with node information."""
         self.properties_tab.update_info(info)
-        self.value_tab.set_node(info.node_id, info)
-        self.write_tab.set_node(info.node_id, info)
+        self.data_access_tab.set_node(info.node_id, info)
 
         # Switch to relevant tab based on node type
         if info.node_class == NodeType.METHOD:

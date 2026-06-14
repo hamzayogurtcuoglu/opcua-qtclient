@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         # ── Floating Dock: Script Runner ──────────────────────────────────────
         self.script_runner_panel = ScriptRunnerPanel()
         self.script_runner_panel.add_to_favorites.connect(
-            lambda path, name, args: self.favorites_panel.add_script_favorite(path, name, args)
+            lambda path, name, args, content: self.favorites_panel.add_script_favorite(path, name, args, content)
         )
 
         self.runner_dock = QDockWidget("▶  Script Runner", self)
@@ -520,10 +520,8 @@ class MainWindow(QMainWindow):
             # Get servers
             data["servers"] = [s.to_dict() for s in self.server_panel.get_all_servers()]
             
-            # Get favorites
-            if os.path.exists(FAVORITES_FILE):
-                with open(FAVORITES_FILE, "r") as f:
-                    data["favorites"] = json.load(f)
+            # Get favorites directly from the panel's memory so any upgraded or unsaved favorites are included
+            data["favorites"] = [card.fav_item.to_dict() for card in self.favorites_panel._cards]
                     
             with open(file_path, "w") as f:
                 json.dump(data, f, indent=2)
@@ -601,8 +599,9 @@ class MainWindow(QMainWindow):
         if item.node_type == NodeType.SCRIPT:
             self.script_runner_btn.setChecked(True)
             self._toggle_script_runner(True)
-            self.script_runner_panel.load_script(item.node_id, item.input_args)
-            self.script_runner_panel._on_run()
+            success = self.script_runner_panel.load_script(item.node_id, item.input_args, item.script_content)
+            if success:
+                self.script_runner_panel._on_run()
             return
 
         asyncio.ensure_future(self._activate_favorite(item))

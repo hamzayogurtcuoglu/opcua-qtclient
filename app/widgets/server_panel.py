@@ -32,11 +32,18 @@ class ServerCard(QFrame):
 
     def _setup_ui(self):
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setFixedHeight(68)
+        # Remove fixed height to let layout handle it compactly
+        # self.setFixedHeight(68)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(8)
+
+        # Status dot
+        self.status_badge = QLabel("●")
+        self.status_badge.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        self.status_badge.setFixedWidth(16)
+        layout.addWidget(self.status_badge)
 
         # Text section
         text_layout = QVBoxLayout()
@@ -48,18 +55,6 @@ class ServerCard(QFrame):
         text_layout.addWidget(self.name_label)
         text_layout.addWidget(self.url_label)
         layout.addLayout(text_layout, 1)
-
-        # Status badge
-        self.status_badge = QLabel()
-        self.status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_badge.setFixedHeight(22)
-        self.status_badge.setStyleSheet(f"""
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 10px;
-            font-weight: bold;
-        """)
-        layout.addWidget(self.status_badge)
 
         self.update_theme()
         theme_manager.theme_changed.connect(self.update_theme)
@@ -96,46 +91,20 @@ class ServerCard(QFrame):
 
     def update_status(self, status: ConnectionStatus):
         self.server_info.status = status
+        
+        base_style = "font-size: 14px; background: transparent;"
         if status == ConnectionStatus.CONNECTED:
-            self.status_badge.setText("Connected")
-            self.status_badge.setStyleSheet(f"""
-                background-color: {Colors.SUCCESS_BG};
-                color: {Colors.SUCCESS};
-                border-radius: 4px;
-                padding: 2px 8px;
-                font-size: 10px;
-                font-weight: bold;
-            """)
+            self.status_badge.setStyleSheet(f"{base_style} color: {Colors.SUCCESS};")
+            self.status_badge.setToolTip("Connected")
         elif status == ConnectionStatus.CONNECTING:
-            self.status_badge.setText("Connecting...")
-            self.status_badge.setStyleSheet(f"""
-                background-color: {Colors.WARNING_BG};
-                color: {Colors.WARNING};
-                border-radius: 4px;
-                padding: 2px 8px;
-                font-size: 10px;
-                font-weight: bold;
-            """)
+            self.status_badge.setStyleSheet(f"{base_style} color: {Colors.WARNING};")
+            self.status_badge.setToolTip("Connecting...")
         elif status == ConnectionStatus.ERROR:
-            self.status_badge.setText("Error")
-            self.status_badge.setStyleSheet(f"""
-                background-color: {Colors.ERROR_BG};
-                color: {Colors.ERROR};
-                border-radius: 4px;
-                padding: 2px 8px;
-                font-size: 10px;
-                font-weight: bold;
-            """)
+            self.status_badge.setStyleSheet(f"{base_style} color: {Colors.ERROR};")
+            self.status_badge.setToolTip("Error")
         else:
-            self.status_badge.setText("Not Connected")
-            self.status_badge.setStyleSheet(f"""
-                background-color: {Colors.BG_SURFACE};
-                color: {Colors.TEXT_MUTED};
-                border-radius: 4px;
-                padding: 2px 8px;
-                font-size: 10px;
-                font-weight: bold;
-            """)
+            self.status_badge.setStyleSheet(f"{base_style} color: {Colors.TEXT_MUTED};")
+            self.status_badge.setToolTip("Not Connected")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -189,8 +158,8 @@ class ServerPanel(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        self.setMinimumWidth(240)
-        self.setMaximumWidth(320)
+        self.setMinimumWidth(220)
+        # self.setMaximumWidth(320) # Removed to allow the user to expand the sidebar as much as they want.
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

@@ -377,19 +377,33 @@ class FavoritesPanel(QWidget):
                     break
             self._save_favorites()
 
-    def add_script_favorite(self, script_path: str, display_name: str, args: list = None):
+    def add_script_favorite(self, script_path: str, display_name: str, args: list = None, script_content: str = ""):
         """Add a Python script to favorites."""
-        # Use path as unique node_id
+        # Use filename as node_id for better display instead of full path
+        import os
+        node_id = os.path.basename(script_path)
+        
+        # Check if already exists
         for card in self._cards:
-            if card.fav_item.node_id == script_path:
+            if card.fav_item.node_id == node_id and card.fav_item.node_type == NodeType.SCRIPT:
                 return
+                
+        # Read script content if not provided
+        if not script_content:
+            try:
+                with open(script_path, "r", encoding="utf-8") as f:
+                    script_content = f.read()
+            except Exception:
+                pass
+
         item = FavoriteItem(
             display_name=display_name,
-            node_id=script_path,
+            node_id=node_id,
             node_type=NodeType.SCRIPT,
             server_url="",
             server_name="",
             input_args=args or [],
+            script_content=script_content,
         )
         self._add_card(item)
         self._save_favorites()
@@ -407,8 +421,22 @@ class FavoritesPanel(QWidget):
             if os.path.exists(FAVORITES_FILE):
                 with open(FAVORITES_FILE, "r") as f:
                     data = json.load(f)
+                needs_save = False
                 for item_data in data:
                     item = FavoriteItem.from_dict(item_data)
+                    # Upgrade old script favorites
+                    if item.node_type == NodeType.SCRIPT and not item.script_content:
+                        import os
+                        if os.path.exists(item.node_id):
+                            try:
+                                with open(item.node_id, "r", encoding="utf-8") as f:
+                                    item.script_content = f.read()
+                                item.node_id = os.path.basename(item.node_id)
+                                needs_save = True
+                            except Exception:
+                                pass
                     self._add_card(item)
+                if needs_save:
+                    self._save_favorites()
         except Exception:
             pass
