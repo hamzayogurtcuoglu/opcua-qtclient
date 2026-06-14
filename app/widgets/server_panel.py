@@ -64,11 +64,11 @@ class ServerCard(QFrame):
             ServerCard {{
                 background-color: {Colors.BG_CARD};
                 border: 1px solid {Colors.BORDER};
-                border-radius: 10px;
-                padding: 0px;
+                border-radius: 8px;
+                padding: 4px;
             }}
             ServerCard:hover {{
-                border-color: {Colors.BORDER_LIGHT};
+                border-color: {Colors.ACCENT};
                 background-color: {Colors.BG_HOVER};
             }}
         """)
@@ -167,6 +167,7 @@ class ServerPanel(QWidget):
 
         # Panel container
         self.panel = QFrame()
+        self.panel.setObjectName("ServerPanelFrame")
         panel_layout = QVBoxLayout(self.panel)
         panel_layout.setContentsMargins(12, 14, 12, 14)
         panel_layout.setSpacing(10)
@@ -237,7 +238,7 @@ class ServerPanel(QWidget):
 
     def update_theme(self):
         self.panel.setStyleSheet(f"""
-            QFrame {{
+            #ServerPanelFrame {{
                 background-color: {Colors.BG_DARK};
                 border: 1px solid {Colors.BORDER};
                 border-radius: 12px;
@@ -270,10 +271,11 @@ class ServerPanel(QWidget):
             QPushButton {{
                 background-color: transparent;
                 border: 1px dashed {Colors.BORDER_LIGHT};
-                border-radius: 10px;
+                border-radius: 8px;
                 color: {Colors.TEXT_SECONDARY};
-                padding: 10px;
-                font-size: 12px;
+                padding: 12px;
+                font-size: 13px;
+                font-weight: 500;
             }}
             QPushButton:hover {{
                 border-color: {Colors.ACCENT};

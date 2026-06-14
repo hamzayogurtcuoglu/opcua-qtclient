@@ -41,6 +41,7 @@ class ConnectionTab(QWidget):
 
         # Container frame
         self.container = QFrame()
+        self.container.setObjectName("ConnectionTabFrame")
         container_layout = QVBoxLayout(self.container)
         container_layout.setContentsMargins(14, 14, 14, 14)
         container_layout.setSpacing(10)
@@ -68,6 +69,21 @@ class ConnectionTab(QWidget):
         # Disconnect button
         self.disconnect_btn = QPushButton("⚡ Disconnect")
         self.disconnect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.disconnect_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Colors.ERROR_BG};
+                color: {Colors.ERROR};
+                border: 1px solid {Colors.ERROR};
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.ERROR};
+                color: white;
+            }}
+        """)
         self.disconnect_btn.clicked.connect(
             lambda: self.disconnect_requested.emit(self.server_url)
         )
@@ -111,7 +127,7 @@ class ConnectionTab(QWidget):
 
     def update_theme(self):
         self.container.setStyleSheet(f"""
-            QFrame {{
+            #ConnectionTabFrame {{
                 background-color: {Colors.BG_DARK};
                 border: 1px solid {Colors.BORDER};
                 border-radius: 12px;

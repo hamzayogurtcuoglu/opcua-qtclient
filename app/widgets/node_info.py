@@ -806,6 +806,37 @@ class NodeInfoWidget(QWidget):
 
         layout.addWidget(self.tabs)
 
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.tabs.setStyleSheet(f"""
+            QTabWidget::pane {{
+                border: 1px solid {Colors.BORDER};
+                border-radius: 8px;
+                background-color: {Colors.BG_CARD};
+                top: -1px;
+            }}
+            QTabBar::tab {{
+                background-color: transparent;
+                color: {Colors.TEXT_SECONDARY};
+                border: none;
+                border-bottom: 2px solid transparent;
+                padding: 10px 20px;
+                margin-right: 4px;
+                font-size: 13px;
+                font-weight: 500;
+            }}
+            QTabBar::tab:selected {{
+                color: {Colors.ACCENT};
+                border-bottom: 2px solid {Colors.ACCENT};
+            }}
+            QTabBar::tab:hover:!selected {{
+                color: {Colors.TEXT_PRIMARY};
+                background-color: {Colors.BG_HOVER};
+            }}
+        """)
+
     def set_client(self, client, server_name: str = ""):
         self.data_access_tab.set_client(client, server_name)
         self.call_method_tab.set_client(client, server_name)

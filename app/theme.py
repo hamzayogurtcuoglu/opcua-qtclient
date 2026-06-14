@@ -93,6 +93,51 @@ LIGHT_PALETTE = {
     "SCROLLBAR_HOVER": "#9ca3af",
 }
 
+SYSTEM_PALETTE = {
+    # Backgrounds
+    "BG_DARKEST": "#d4d4d4",    # Classic gray
+    "BG_DARK": "#e5e5e5",       # Lighter gray
+    "BG_MEDIUM": "#f5f5f5",     # Almost white
+    "BG_CARD": "#f0f0f0",       # Card background
+    "BG_SURFACE": "#e5e5e5",    
+    "BG_HOVER": "#d4d4d4",      
+    "BG_INPUT": "#ffffff",      
+    # Borders
+    "BORDER": "#a3a3a3",        
+    "BORDER_LIGHT": "#d4d4d4",  
+    "BORDER_FOCUS": "#3b82f6",  
+    # Text
+    "TEXT_PRIMARY": "#171717",  
+    "TEXT_SECONDARY": "#525252",
+    "TEXT_MUTED": "#737373",    
+    "TEXT_BRIGHT": "#000000",   
+    # Accent / Primary
+    "ACCENT": "#3b82f6",        
+    "ACCENT_HOVER": "#60a5fa",  
+    "ACCENT_DARK": "#2563eb",   
+    # Status colors
+    "SUCCESS": "#16a34a",       
+    "SUCCESS_BG": "#dcfce7",    
+    "WARNING": "#d97706",       
+    "WARNING_BG": "#fef3c7",    
+    "ERROR": "#dc2626",         
+    "ERROR_BG": "#fee2e2",      
+    # Node type colors
+    "NODE_OBJECT": "#d97706",
+    "NODE_VARIABLE": "#2563eb",
+    "NODE_METHOD": "#9333ea",
+    "NODE_VIEW": "#0891b2",
+    # Badges
+    "BADGE_VARIABLE": "#dbeafe",
+    "BADGE_VARIABLE_TEXT": "#1e40af",
+    "BADGE_METHOD": "#f3e8ff",
+    "BADGE_METHOD_TEXT": "#6b21a8",
+    # Scrollbar
+    "SCROLLBAR_BG": "transparent",
+    "SCROLLBAR_HANDLE": "#a3a3a3",
+    "SCROLLBAR_HOVER": "#737373",
+}
+
 
 class Colors:
     """Centralized color palette."""
@@ -148,7 +193,12 @@ class ThemeManager(QObject):
 
     def apply_theme(self, mode: str):
         self.current_mode = mode
-        palette = LIGHT_PALETTE if mode == "light" else DARK_PALETTE
+        if mode == "light":
+            palette = LIGHT_PALETTE
+        elif mode == "system":
+            palette = SYSTEM_PALETTE
+        else:
+            palette = DARK_PALETTE
 
         # Update Colors class variables
         for key, value in palette.items():
