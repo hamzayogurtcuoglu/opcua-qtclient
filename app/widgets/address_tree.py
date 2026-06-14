@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.models import NodeType
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 
 
 # Unicode icons for node types
@@ -27,12 +27,13 @@ NODE_ICONS = {
     NodeType.UNKNOWN: "❓",
 }
 
-NODE_COLORS = {
-    NodeType.OBJECT: Colors.NODE_OBJECT,
-    NodeType.VARIABLE: Colors.NODE_VARIABLE,
-    NodeType.METHOD: Colors.NODE_METHOD,
-    NodeType.VIEW: Colors.NODE_VIEW,
-}
+def _get_node_colors():
+    return {
+        NodeType.OBJECT: Colors.NODE_OBJECT,
+        NodeType.VARIABLE: Colors.NODE_VARIABLE,
+        NodeType.METHOD: Colors.NODE_METHOD,
+        NodeType.VIEW: Colors.NODE_VIEW,
+    }
 
 
 class AddressTreeWidget(QWidget):
@@ -53,15 +54,8 @@ class AddressTreeWidget(QWidget):
         layout.setSpacing(6)
 
         # Header
-        header = QLabel("Address Space")
-        header.setStyleSheet(f"""
-            font-size: 13px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-            padding: 4px 0px;
-        """)
-        layout.addWidget(header)
+        self.header = QLabel("Address Space")
+        layout.addWidget(self.header)
 
         # Search
         self.search_input = QLineEdit()
@@ -74,6 +68,22 @@ class AddressTreeWidget(QWidget):
         self.tree.setHeaderHidden(True)
         self.tree.setAnimated(True)
         self.tree.setIndentation(20)
+        self.tree.itemClicked.connect(self._on_item_clicked)
+        self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.tree.itemExpanded.connect(self._on_item_expanded)
+        layout.addWidget(self.tree, 1)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.header.setStyleSheet(f"""
+            font-size: 13px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+            padding: 4px 0px;
+        """)
         self.tree.setStyleSheet(f"""
             QTreeWidget {{
                 background-color: {Colors.BG_DARK};
@@ -82,10 +92,20 @@ class AddressTreeWidget(QWidget):
                 padding: 4px;
             }}
         """)
-        self.tree.itemClicked.connect(self._on_item_clicked)
-        self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
-        self.tree.itemExpanded.connect(self._on_item_expanded)
-        layout.addWidget(self.tree, 1)
+        self._restyle_all_items(self.tree.invisibleRootItem())
+
+    def _restyle_all_items(self, item: QTreeWidgetItem):
+        for i in range(item.childCount()):
+            child = item.child(i)
+            if child:
+                if child.text(0) == "Loading...":
+                    child.setForeground(0, QBrush(QColor(Colors.TEXT_MUTED)))
+                else:
+                    # Retrieve node_type from data
+                    node_type_val = child.data(0, Qt.ItemDataRole.UserRole + 1)
+                    if node_type_val:
+                        self._style_item(child, node_type_val, apply_text=False)
+                self._restyle_all_items(child)
 
     def set_client(self, client):
         """Set the OPC UA client instance."""
@@ -138,13 +158,15 @@ class AddressTreeWidget(QWidget):
                 placeholder = QTreeWidgetItem(child_item, ["Loading..."])
                 placeholder.setForeground(0, QBrush(QColor(Colors.TEXT_MUTED)))
 
-    def _style_item(self, item: QTreeWidgetItem, node_type: NodeType):
+    def _style_item(self, item: QTreeWidgetItem, node_type: NodeType, apply_text: bool = True):
         """Apply icon and color styling to a tree item."""
-        icon = NODE_ICONS.get(node_type, "❓")
-        current_text = item.text(0).strip()
-        item.setText(0, f"{icon}  {current_text}")
+        if apply_text:
+            icon = NODE_ICONS.get(node_type, "❓")
+            current_text = item.text(0).strip()
+            item.setText(0, f"{icon}  {current_text}")
 
-        color = NODE_COLORS.get(node_type, Colors.TEXT_PRIMARY)
+        colors_map = _get_node_colors()
+        color = colors_map.get(node_type, Colors.TEXT_PRIMARY)
         item.setForeground(0, QBrush(QColor(color)))
 
         font = item.font(0)

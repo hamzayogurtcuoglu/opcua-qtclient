@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.models import ServerInfo, ConnectionStatus
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 
 
 class ServerCard(QFrame):
@@ -33,18 +33,6 @@ class ServerCard(QFrame):
     def _setup_ui(self):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFixedHeight(68)
-        self.setStyleSheet(f"""
-            ServerCard {{
-                background-color: {Colors.BG_CARD};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 10px;
-                padding: 0px;
-            }}
-            ServerCard:hover {{
-                border-color: {Colors.BORDER_LIGHT};
-                background-color: {Colors.BG_HOVER};
-            }}
-        """)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -55,19 +43,7 @@ class ServerCard(QFrame):
         text_layout.setSpacing(2)
 
         self.name_label = QLabel(self.server_info.name)
-        self.name_label.setStyleSheet(f"""
-            font-weight: bold;
-            font-size: 13px;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-
         self.url_label = QLabel(self.server_info.url)
-        self.url_label.setStyleSheet(f"""
-            font-size: 11px;
-            color: {Colors.TEXT_MUTED};
-            background: transparent;
-        """)
 
         text_layout.addWidget(self.name_label)
         text_layout.addWidget(self.url_label)
@@ -84,6 +60,39 @@ class ServerCard(QFrame):
             font-weight: bold;
         """)
         layout.addWidget(self.status_badge)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.setStyleSheet(f"""
+            ServerCard {{
+                background-color: {Colors.BG_CARD};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 10px;
+                padding: 0px;
+            }}
+            ServerCard:hover {{
+                border-color: {Colors.BORDER_LIGHT};
+                background-color: {Colors.BG_HOVER};
+            }}
+        """)
+
+        self.name_label.setStyleSheet(f"""
+            font-weight: bold;
+            font-size: 13px;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
+
+        self.url_label.setStyleSheet(f"""
+            font-size: 11px;
+            color: {Colors.TEXT_MUTED};
+            background: transparent;
+        """)
+
+        # Re-apply status styling with new theme
+        self.update_status(self.server_info.status)
 
     def update_status(self, status: ConnectionStatus):
         self.server_info.status = status
@@ -188,46 +197,19 @@ class ServerPanel(QWidget):
         layout.setSpacing(0)
 
         # Panel container
-        panel = QFrame()
-        panel.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BG_DARK};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 12px;
-            }}
-        """)
-        panel_layout = QVBoxLayout(panel)
+        self.panel = QFrame()
+        panel_layout = QVBoxLayout(self.panel)
         panel_layout.setContentsMargins(12, 14, 12, 14)
         panel_layout.setSpacing(10)
 
         # Header
         header_layout = QHBoxLayout()
-        title = QLabel("Servers")
-        title.setStyleSheet(f"""
-            font-size: 15px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-            border: none;
-        """)
-        header_layout.addWidget(title)
+        self.title_label = QLabel("Servers")
+        header_layout.addWidget(self.title_label)
         header_layout.addStretch()
 
         self.refresh_btn = QPushButton("⟳")
         self.refresh_btn.setFixedSize(28, 28)
-        self.refresh_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                border: none;
-                color: {Colors.TEXT_SECONDARY};
-                font-size: 16px;
-                border-radius: 6px;
-            }}
-            QPushButton:hover {{
-                background-color: {Colors.BG_HOVER};
-                color: {Colors.TEXT_PRIMARY};
-            }}
-        """)
         header_layout.addWidget(self.refresh_btn)
         panel_layout.addLayout(header_layout)
 
@@ -255,8 +237,67 @@ class ServerPanel(QWidget):
         panel_layout.addWidget(scroll, 1)
 
         # Add server button
-        add_btn = QPushButton("+ Add Server Manually")
-        add_btn.setStyleSheet(f"""
+        self.add_btn = QPushButton("+ Add Server Manually")
+        self.add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.add_btn.clicked.connect(self.add_server_requested.emit)
+        panel_layout.addWidget(self.add_btn)
+
+        # Legend
+        legend_layout = QHBoxLayout()
+        legend_layout.setSpacing(12)
+        self.legend_text_labels = []
+        for icon, label in [
+            ("🟡", "Object"), ("🔵", "Variable"), ("🟣", "Method"), ("👁", "View")
+        ]:
+            item_layout = QHBoxLayout()
+            item_layout.setSpacing(4)
+            icon_lbl = QLabel(icon)
+            icon_lbl.setStyleSheet("font-size: 10px; background: transparent;")
+            text_lbl = QLabel(label)
+            self.legend_text_labels.append(text_lbl)
+            item_layout.addWidget(icon_lbl)
+            item_layout.addWidget(text_lbl)
+            legend_layout.addLayout(item_layout)
+        legend_layout.addStretch()
+        panel_layout.addLayout(legend_layout)
+
+        layout.addWidget(self.panel)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.panel.setStyleSheet(f"""
+            QFrame {{
+                background-color: {Colors.BG_DARK};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 12px;
+            }}
+        """)
+
+        self.title_label.setStyleSheet(f"""
+            font-size: 15px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+            border: none;
+        """)
+
+        self.refresh_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                color: {Colors.TEXT_SECONDARY};
+                font-size: 16px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+                color: {Colors.TEXT_PRIMARY};
+            }}
+        """)
+
+        self.add_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
                 border: 1px dashed {Colors.BORDER_LIGHT};
@@ -271,29 +312,10 @@ class ServerPanel(QWidget):
                 background-color: {Colors.BG_HOVER};
             }}
         """)
-        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_btn.clicked.connect(self.add_server_requested.emit)
-        panel_layout.addWidget(add_btn)
 
-        # Legend
-        legend_layout = QHBoxLayout()
-        legend_layout.setSpacing(12)
-        for icon, label in [
-            ("🟡", "Object"), ("🔵", "Variable"), ("🟣", "Method"), ("👁", "View")
-        ]:
-            item_layout = QHBoxLayout()
-            item_layout.setSpacing(4)
-            icon_lbl = QLabel(icon)
-            icon_lbl.setStyleSheet("font-size: 10px; background: transparent;")
-            text_lbl = QLabel(label)
-            text_lbl.setStyleSheet(f"font-size: 10px; color: {Colors.TEXT_MUTED}; background: transparent;")
-            item_layout.addWidget(icon_lbl)
-            item_layout.addWidget(text_lbl)
-            legend_layout.addLayout(item_layout)
-        legend_layout.addStretch()
-        panel_layout.addLayout(legend_layout)
-
-        layout.addWidget(panel)
+        # Legend items
+        for lbl in self.legend_text_labels:
+            lbl.setStyleSheet(f"font-size: 10px; color: {Colors.TEXT_MUTED}; background: transparent;")
 
     def add_server(self, server_info: ServerInfo):
         """Add a new server card to the panel."""

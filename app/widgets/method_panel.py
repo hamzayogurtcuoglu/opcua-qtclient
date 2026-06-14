@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.models import MethodArgument, NodeType
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 
 
 class MethodPanel(QWidget):
@@ -34,33 +34,19 @@ class MethodPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        panel = QFrame()
-        panel.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BG_DARK};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 12px;
-            }}
-        """)
-        panel_layout = QVBoxLayout(panel)
+        self.panel = QFrame()
+        panel_layout = QVBoxLayout(self.panel)
         panel_layout.setContentsMargins(12, 12, 12, 12)
         panel_layout.setSpacing(8)
 
         # Header
-        header = QLabel("Method Call")
-        header.setStyleSheet(f"""
-            font-size: 14px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-        panel_layout.addWidget(header)
+        self.header = QLabel("Method Call")
+        panel_layout.addWidget(self.header)
 
         # Method selector
         method_row = QHBoxLayout()
-        method_label = QLabel("Method:")
-        method_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
-        method_row.addWidget(method_label)
+        self.method_label = QLabel("Method:")
+        method_row.addWidget(self.method_label)
 
         self.method_combo = QComboBox()
         self.method_combo.setMinimumWidth(200)
@@ -69,17 +55,6 @@ class MethodPanel(QWidget):
 
         self.fav_btn = QPushButton("⭐")
         self.fav_btn.setFixedSize(28, 28)
-        self.fav_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                border: none;
-                font-size: 16px;
-                border-radius: 6px;
-            }}
-            QPushButton:hover {{
-                background-color: {Colors.BG_HOVER};
-            }}
-        """)
         self.fav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.fav_btn.clicked.connect(self._on_favorite)
         method_row.addWidget(self.fav_btn)
@@ -87,14 +62,8 @@ class MethodPanel(QWidget):
         panel_layout.addLayout(method_row)
 
         # Input Parameters
-        input_label = QLabel("Input Parameters")
-        input_label.setStyleSheet(f"""
-            font-size: 12px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-        panel_layout.addWidget(input_label)
+        self.input_label = QLabel("Input Parameters")
+        panel_layout.addWidget(self.input_label)
 
         self.params_table = QTableWidget(0, 4)
         self.params_table.setHorizontalHeaderLabels(["#", "Name", "Type", "Value"])
@@ -135,18 +104,63 @@ class MethodPanel(QWidget):
         panel_layout.addLayout(btn_layout)
 
         # Output
-        output_label = QLabel("Output")
-        output_label.setStyleSheet(f"""
+        self.output_label = QLabel("Output")
+        panel_layout.addWidget(self.output_label)
+
+        self.output_display = QTextEdit()
+        self.output_display.setReadOnly(True)
+        self.output_display.setMaximumHeight(60)
+        panel_layout.addWidget(self.output_display)
+
+        layout.addWidget(self.panel)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.panel.setStyleSheet(f"""
+            QFrame {{
+                background-color: {Colors.BG_DARK};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 12px;
+            }}
+        """)
+        
+        self.header.setStyleSheet(f"""
+            font-size: 14px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
+        
+        self.method_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
+        
+        self.fav_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                font-size: 16px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+            }}
+        """)
+        
+        self.input_label.setStyleSheet(f"""
             font-size: 12px;
             font-weight: bold;
             color: {Colors.TEXT_PRIMARY};
             background: transparent;
         """)
-        panel_layout.addWidget(output_label)
-
-        self.output_display = QTextEdit()
-        self.output_display.setReadOnly(True)
-        self.output_display.setMaximumHeight(60)
+        
+        self.output_label.setStyleSheet(f"""
+            font-size: 12px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
+        
         self.output_display.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {Colors.BG_INPUT};
@@ -158,9 +172,6 @@ class MethodPanel(QWidget):
                 color: {Colors.TEXT_PRIMARY};
             }}
         """)
-        panel_layout.addWidget(self.output_display)
-
-        layout.addWidget(panel)
 
     def set_client(self, client, server_name: str = ""):
         self._opcua_client = client

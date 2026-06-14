@@ -1,57 +1,168 @@
-"""Dark theme stylesheet and color constants for the OPC UA Client."""
+"""Theme stylesheet and color constants for the OPC UA Client."""
+
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QApplication
+
+DARK_PALETTE = {
+    # Backgrounds
+    "BG_DARKEST": "#0f1117",
+    "BG_DARK": "#161b22",
+    "BG_MEDIUM": "#1c2333",
+    "BG_CARD": "#1e293b",
+    "BG_SURFACE": "#243044",
+    "BG_HOVER": "#2a3a52",
+    "BG_INPUT": "#131a27",
+    # Borders
+    "BORDER": "#2d3748",
+    "BORDER_LIGHT": "#3a4a5e",
+    "BORDER_FOCUS": "#4f8cff",
+    # Text
+    "TEXT_PRIMARY": "#e2e8f0",
+    "TEXT_SECONDARY": "#94a3b8",
+    "TEXT_MUTED": "#64748b",
+    "TEXT_BRIGHT": "#f8fafc",
+    # Accent / Primary
+    "ACCENT": "#4f8cff",
+    "ACCENT_HOVER": "#6ba1ff",
+    "ACCENT_DARK": "#3b6fd4",
+    # Status colors
+    "SUCCESS": "#22c55e",
+    "SUCCESS_BG": "#15392b",
+    "WARNING": "#f59e0b",
+    "WARNING_BG": "#3d2f0a",
+    "ERROR": "#ef4444",
+    "ERROR_BG": "#3d1515",
+    # Node type colors
+    "NODE_OBJECT": "#f59e0b",
+    "NODE_VARIABLE": "#4f8cff",
+    "NODE_METHOD": "#a855f7",
+    "NODE_VIEW": "#06b6d4",
+    # Badges
+    "BADGE_VARIABLE": "#1e40af",
+    "BADGE_VARIABLE_TEXT": "#93c5fd",
+    "BADGE_METHOD": "#6b21a8",
+    "BADGE_METHOD_TEXT": "#c4b5fd",
+    # Scrollbar
+    "SCROLLBAR_BG": "#1c2333",
+    "SCROLLBAR_HANDLE": "#3a4a5e",
+    "SCROLLBAR_HOVER": "#4a5a6e",
+}
+
+LIGHT_PALETTE = {
+    # Backgrounds
+    "BG_DARKEST": "#f8fafc",
+    "BG_DARK": "#f1f5f9",
+    "BG_MEDIUM": "#e2e8f0",
+    "BG_CARD": "#ffffff",
+    "BG_SURFACE": "#f1f5f9",
+    "BG_HOVER": "#e2e8f0",
+    "BG_INPUT": "#ffffff",
+    # Borders
+    "BORDER": "#cbd5e1",
+    "BORDER_LIGHT": "#94a3b8",
+    "BORDER_FOCUS": "#3b82f6",
+    # Text
+    "TEXT_PRIMARY": "#0f172a",
+    "TEXT_SECONDARY": "#475569",
+    "TEXT_MUTED": "#64748b",
+    "TEXT_BRIGHT": "#000000",
+    # Accent / Primary
+    "ACCENT": "#3b82f6",
+    "ACCENT_HOVER": "#2563eb",
+    "ACCENT_DARK": "#1d4ed8",
+    # Status colors
+    "SUCCESS": "#16a34a",
+    "SUCCESS_BG": "#dcfce7",
+    "WARNING": "#d97706",
+    "WARNING_BG": "#fef3c7",
+    "ERROR": "#dc2626",
+    "ERROR_BG": "#fee2e2",
+    # Node type colors
+    "NODE_OBJECT": "#d97706",
+    "NODE_VARIABLE": "#2563eb",
+    "NODE_METHOD": "#9333ea",
+    "NODE_VIEW": "#0891b2",
+    # Badges
+    "BADGE_VARIABLE": "#dbeafe",
+    "BADGE_VARIABLE_TEXT": "#1e40af",
+    "BADGE_METHOD": "#f3e8ff",
+    "BADGE_METHOD_TEXT": "#6b21a8",
+    # Scrollbar
+    "SCROLLBAR_BG": "#e2e8f0",
+    "SCROLLBAR_HANDLE": "#94a3b8",
+    "SCROLLBAR_HOVER": "#64748b",
+}
 
 
 class Colors:
     """Centralized color palette."""
-    # Backgrounds
-    BG_DARKEST = "#0f1117"
-    BG_DARK = "#161b22"
-    BG_MEDIUM = "#1c2333"
-    BG_CARD = "#1e293b"
-    BG_SURFACE = "#243044"
-    BG_HOVER = "#2a3a52"
-    BG_INPUT = "#131a27"
+    BG_DARKEST = DARK_PALETTE["BG_DARKEST"]
+    BG_DARK = DARK_PALETTE["BG_DARK"]
+    BG_MEDIUM = DARK_PALETTE["BG_MEDIUM"]
+    BG_CARD = DARK_PALETTE["BG_CARD"]
+    BG_SURFACE = DARK_PALETTE["BG_SURFACE"]
+    BG_HOVER = DARK_PALETTE["BG_HOVER"]
+    BG_INPUT = DARK_PALETTE["BG_INPUT"]
 
-    # Borders
-    BORDER = "#2d3748"
-    BORDER_LIGHT = "#3a4a5e"
-    BORDER_FOCUS = "#4f8cff"
+    BORDER = DARK_PALETTE["BORDER"]
+    BORDER_LIGHT = DARK_PALETTE["BORDER_LIGHT"]
+    BORDER_FOCUS = DARK_PALETTE["BORDER_FOCUS"]
 
-    # Text
-    TEXT_PRIMARY = "#e2e8f0"
-    TEXT_SECONDARY = "#94a3b8"
-    TEXT_MUTED = "#64748b"
-    TEXT_BRIGHT = "#f8fafc"
+    TEXT_PRIMARY = DARK_PALETTE["TEXT_PRIMARY"]
+    TEXT_SECONDARY = DARK_PALETTE["TEXT_SECONDARY"]
+    TEXT_MUTED = DARK_PALETTE["TEXT_MUTED"]
+    TEXT_BRIGHT = DARK_PALETTE["TEXT_BRIGHT"]
 
-    # Accent / Primary
-    ACCENT = "#4f8cff"
-    ACCENT_HOVER = "#6ba1ff"
-    ACCENT_DARK = "#3b6fd4"
+    ACCENT = DARK_PALETTE["ACCENT"]
+    ACCENT_HOVER = DARK_PALETTE["ACCENT_HOVER"]
+    ACCENT_DARK = DARK_PALETTE["ACCENT_DARK"]
 
-    # Status colors
-    SUCCESS = "#22c55e"
-    SUCCESS_BG = "#15392b"
-    WARNING = "#f59e0b"
-    WARNING_BG = "#3d2f0a"
-    ERROR = "#ef4444"
-    ERROR_BG = "#3d1515"
+    SUCCESS = DARK_PALETTE["SUCCESS"]
+    SUCCESS_BG = DARK_PALETTE["SUCCESS_BG"]
+    WARNING = DARK_PALETTE["WARNING"]
+    WARNING_BG = DARK_PALETTE["WARNING_BG"]
+    ERROR = DARK_PALETTE["ERROR"]
+    ERROR_BG = DARK_PALETTE["ERROR_BG"]
 
-    # Node type colors
-    NODE_OBJECT = "#f59e0b"    # Yellow/amber for folders/objects
-    NODE_VARIABLE = "#4f8cff"  # Blue for variables
-    NODE_METHOD = "#a855f7"    # Purple for methods
-    NODE_VIEW = "#06b6d4"      # Cyan for views
+    NODE_OBJECT = DARK_PALETTE["NODE_OBJECT"]
+    NODE_VARIABLE = DARK_PALETTE["NODE_VARIABLE"]
+    NODE_METHOD = DARK_PALETTE["NODE_METHOD"]
+    NODE_VIEW = DARK_PALETTE["NODE_VIEW"]
 
-    # Badges
-    BADGE_VARIABLE = "#1e40af"
-    BADGE_VARIABLE_TEXT = "#93c5fd"
-    BADGE_METHOD = "#6b21a8"
-    BADGE_METHOD_TEXT = "#c4b5fd"
+    BADGE_VARIABLE = DARK_PALETTE["BADGE_VARIABLE"]
+    BADGE_VARIABLE_TEXT = DARK_PALETTE["BADGE_VARIABLE_TEXT"]
+    BADGE_METHOD = DARK_PALETTE["BADGE_METHOD"]
+    BADGE_METHOD_TEXT = DARK_PALETTE["BADGE_METHOD_TEXT"]
 
-    # Scrollbar
-    SCROLLBAR_BG = "#1c2333"
-    SCROLLBAR_HANDLE = "#3a4a5e"
-    SCROLLBAR_HOVER = "#4a5a6e"
+    SCROLLBAR_BG = DARK_PALETTE["SCROLLBAR_BG"]
+    SCROLLBAR_HANDLE = DARK_PALETTE["SCROLLBAR_HANDLE"]
+    SCROLLBAR_HOVER = DARK_PALETTE["SCROLLBAR_HOVER"]
+
+
+class ThemeManager(QObject):
+    theme_changed = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.current_mode = "dark"
+
+    def apply_theme(self, mode: str):
+        self.current_mode = mode
+        palette = LIGHT_PALETTE if mode == "light" else DARK_PALETTE
+
+        # Update Colors class variables
+        for key, value in palette.items():
+            setattr(Colors, key, value)
+
+        # Update global app stylesheet
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(get_stylesheet())
+
+        # Notify widgets to update their inline styles
+        self.theme_changed.emit()
+
+theme_manager = ThemeManager()
 
 
 def get_stylesheet() -> str:

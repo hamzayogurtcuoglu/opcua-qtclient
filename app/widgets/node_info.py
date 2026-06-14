@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.models import NodeInfo, NodeType, MethodArgument
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 
 
 class PropertiesTab(QWidget):
@@ -32,15 +32,8 @@ class PropertiesTab(QWidget):
         layout.setSpacing(12)
 
         # Node Information section
-        info_label = QLabel("Node Information")
-        info_label.setStyleSheet(f"""
-            font-size: 13px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-            border: none;
-        """)
-        layout.addWidget(info_label)
+        self.info_label = QLabel("Node Information")
+        layout.addWidget(self.info_label)
 
         self.info_table = QTableWidget(6, 2)
         self.info_table.setHorizontalHeaderLabels(["Property", "Value"])
@@ -53,11 +46,6 @@ class PropertiesTab(QWidget):
         self.info_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.info_table.setShowGrid(False)
         self.info_table.setAlternatingRowColors(True)
-        self.info_table.setStyleSheet(f"""
-            QTableWidget {{
-                alternate-background-color: {Colors.BG_MEDIUM};
-            }}
-        """)
 
         properties = ["NodeId", "BrowseName", "DisplayName", "NodeClass", "Description", "WriteMask", "UserWriteMask"]
         self.info_table.setRowCount(len(properties))
@@ -73,15 +61,8 @@ class PropertiesTab(QWidget):
         layout.addWidget(self.info_table)
 
         # Attributes section
-        attr_label = QLabel("Attributes")
-        attr_label.setStyleSheet(f"""
-            font-size: 13px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-            border: none;
-        """)
-        layout.addWidget(attr_label)
+        self.attr_label = QLabel("Attributes")
+        layout.addWidget(self.attr_label)
 
         self.attr_table = QTableWidget(5, 2)
         self.attr_table.setHorizontalHeaderLabels(["Attribute", "Value"])
@@ -94,11 +75,6 @@ class PropertiesTab(QWidget):
         self.attr_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.attr_table.setShowGrid(False)
         self.attr_table.setAlternatingRowColors(True)
-        self.attr_table.setStyleSheet(f"""
-            QTableWidget {{
-                alternate-background-color: {Colors.BG_MEDIUM};
-            }}
-        """)
 
         attrs = ["Executable", "UserExecutable", "EventNotifier", "WriteMask", "UserWriteMask"]
         self.attr_table.setRowCount(len(attrs))
@@ -115,6 +91,44 @@ class PropertiesTab(QWidget):
 
         # Add to favorites button
         self.fav_btn = QPushButton("+ Add to Favorites")
+        self.fav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.fav_btn.clicked.connect(self._on_add_favorite)
+        layout.addWidget(self.fav_btn)
+
+        layout.addStretch()
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.info_label.setStyleSheet(f"""
+            font-size: 13px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+            border: none;
+        """)
+        
+        self.info_table.setStyleSheet(f"""
+            QTableWidget {{
+                alternate-background-color: {Colors.BG_MEDIUM};
+            }}
+        """)
+        
+        self.attr_label.setStyleSheet(f"""
+            font-size: 13px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+            border: none;
+        """)
+        
+        self.attr_table.setStyleSheet(f"""
+            QTableWidget {{
+                alternate-background-color: {Colors.BG_MEDIUM};
+            }}
+        """)
+        
         self.fav_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {Colors.BG_CARD};
@@ -130,11 +144,6 @@ class PropertiesTab(QWidget):
                 color: white;
             }}
         """)
-        self.fav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.fav_btn.clicked.connect(self._on_add_favorite)
-        layout.addWidget(self.fav_btn)
-
-        layout.addStretch()
 
     def update_info(self, info: NodeInfo):
         """Update the properties display with new node info."""
@@ -193,38 +202,19 @@ class ValueTab(QWidget):
         layout.setSpacing(12)
 
         # Current value
-        val_label = QLabel("Current Value")
-        val_label.setStyleSheet(f"""
-            font-size: 13px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-        layout.addWidget(val_label)
+        self.val_label = QLabel("Current Value")
+        layout.addWidget(self.val_label)
 
         self.value_display = QTextEdit()
         self.value_display.setReadOnly(True)
         self.value_display.setMaximumHeight(120)
-        self.value_display.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: {Colors.BG_INPUT};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 8px;
-                padding: 10px;
-                font-family: 'Menlo', 'Courier New', 'Courier';
-                font-size: 14px;
-                color: {Colors.ACCENT};
-            }}
-        """)
         layout.addWidget(self.value_display)
 
         # Data type
         type_layout = QHBoxLayout()
-        type_label = QLabel("Data Type:")
-        type_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
+        self.type_label = QLabel("Data Type:")
         self.type_display = QLabel("—")
-        self.type_display.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; background: transparent; font-weight: bold;")
-        type_layout.addWidget(type_label)
+        type_layout.addWidget(self.type_label)
         type_layout.addWidget(self.type_display)
         type_layout.addStretch()
         layout.addLayout(type_layout)
@@ -238,9 +228,8 @@ class ValueTab(QWidget):
 
         refresh_layout.addStretch()
 
-        auto_label = QLabel("Auto-refresh:")
-        auto_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
-        refresh_layout.addWidget(auto_label)
+        self.auto_label = QLabel("Auto-refresh:")
+        refresh_layout.addWidget(self.auto_label)
 
         self.interval_spin = QSpinBox()
         self.interval_spin.setRange(0, 60)
@@ -254,10 +243,37 @@ class ValueTab(QWidget):
 
         # Timestamp
         self.timestamp_label = QLabel("Last updated: —")
-        self.timestamp_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 11px; background: transparent;")
         layout.addWidget(self.timestamp_label)
 
         layout.addStretch()
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.val_label.setStyleSheet(f"""
+            font-size: 13px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
+
+        self.value_display.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {Colors.BG_INPUT};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 8px;
+                padding: 10px;
+                font-family: 'Menlo', 'Courier New', 'Courier';
+                font-size: 14px;
+                color: {Colors.ACCENT};
+            }}
+        """)
+
+        self.type_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
+        self.type_display.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; background: transparent; font-weight: bold;")
+        self.auto_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
+        self.timestamp_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 11px; background: transparent;")
 
     def set_client(self, client, server_name: str = ""):
         self._opcua_client = client
@@ -323,14 +339,12 @@ class WriteTab(QWidget):
         # Node ID
         node_layout = QFormLayout()
         self.node_id_label = QLabel("—")
-        self.node_id_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
         node_layout.addRow("NodeId:", self.node_id_label)
         layout.addLayout(node_layout)
 
         # Data type
-        type_label = QLabel("Data Type")
-        type_label.setStyleSheet(f"font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;")
-        layout.addWidget(type_label)
+        self.type_label = QLabel("Data Type")
+        layout.addWidget(self.type_label)
 
         self.type_combo = QComboBox()
         self.type_combo.addItems([
@@ -341,9 +355,8 @@ class WriteTab(QWidget):
         layout.addWidget(self.type_combo)
 
         # Value input
-        value_label = QLabel("Value")
-        value_label.setStyleSheet(f"font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;")
-        layout.addWidget(value_label)
+        self.value_label = QLabel("Value")
+        layout.addWidget(self.value_label)
 
         self.value_input = QLineEdit()
         self.value_input.setPlaceholderText("Enter value to write...")
@@ -361,10 +374,26 @@ class WriteTab(QWidget):
 
         # Status
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; background: transparent;")
         layout.addWidget(self.status_label)
 
         layout.addStretch()
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.node_id_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
+        self.type_label.setStyleSheet(f"font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;")
+        self.value_label.setStyleSheet(f"font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;")
+        
+        # We only set default color, status might overwrite it if error, but wait, error status sets it directly.
+        # So we leave status_label as is unless it's empty.
+        if not self.status_label.text():
+            self.status_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; background: transparent;")
+        elif "❌" in self.status_label.text():
+            self.status_label.setStyleSheet(f"color: {Colors.ERROR}; background: transparent;")
+        else:
+            self.status_label.setStyleSheet(f"color: {Colors.SUCCESS}; background: transparent;")
 
     def set_client(self, client, server_name: str = ""):
         self._opcua_client = client
@@ -452,25 +481,17 @@ class CallMethodTab(QWidget):
 
         # Method selector
         method_layout = QHBoxLayout()
-        method_label = QLabel("Method:")
-        method_label.setStyleSheet(f"font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;")
-        method_layout.addWidget(method_label)
+        self.method_label = QLabel("Method:")
+        method_layout.addWidget(self.method_label)
 
         self.method_id_label = QLabel("—")
-        self.method_id_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
         self.method_id_label.setWordWrap(True)
         method_layout.addWidget(self.method_id_label, 1)
         layout.addLayout(method_layout)
 
         # Input Parameters
-        input_label = QLabel("Input Parameters")
-        input_label.setStyleSheet(f"""
-            font-size: 12px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-        layout.addWidget(input_label)
+        self.input_label = QLabel("Input Parameters")
+        layout.addWidget(self.input_label)
 
         self.params_table = QTableWidget(0, 4)
         self.params_table.setHorizontalHeaderLabels(["#", "Name", "Type", "Value"])
@@ -501,20 +522,6 @@ class CallMethodTab(QWidget):
 
         self.fav_btn = QPushButton("⭐ Favorite")
         self.fav_btn.setMinimumHeight(34)
-        self.fav_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                border: 1px solid {Colors.NODE_METHOD};
-                border-radius: 6px;
-                color: {Colors.NODE_METHOD};
-                font-weight: bold;
-                padding: 6px 16px;
-            }}
-            QPushButton:hover {{
-                background-color: {Colors.NODE_METHOD};
-                color: white;
-            }}
-        """)
         self.fav_btn.clicked.connect(self._on_favorite)
         btn_layout.addWidget(self.fav_btn)
 
@@ -527,14 +534,8 @@ class CallMethodTab(QWidget):
         layout.addLayout(btn_layout)
 
         # Output
-        output_label = QLabel("Output")
-        output_label.setStyleSheet(f"""
-            font-size: 12px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-        layout.addWidget(output_label)
+        self.output_label = QLabel("Output")
+        layout.addWidget(self.output_label)
 
         self.output_table = QTableWidget(0, 4)
         self.output_table.setHorizontalHeaderLabels(["#", "Name", "Type", "Value"])
@@ -557,6 +558,68 @@ class CallMethodTab(QWidget):
         layout.addWidget(self.output_table)
 
         layout.addStretch()
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.method_label.setStyleSheet(f"font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;")
+        self.method_id_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; background: transparent;")
+        
+        self.input_label.setStyleSheet(f"""
+            font-size: 12px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
+        
+        self.fav_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {Colors.NODE_METHOD};
+                border-radius: 6px;
+                color: {Colors.NODE_METHOD};
+                font-weight: bold;
+                padding: 6px 16px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.NODE_METHOD};
+                color: white;
+            }}
+        """)
+        
+        self.output_label.setStyleSheet(f"""
+            font-size: 12px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
+        
+        # We need to re-render combo boxes and line edits in the params table if they exist.
+        # But wait, we can just call `_populate_params` with existing args.
+        if self._input_args:
+            # Re-populating will reset user's typed values, so let's save them first.
+            saved_vals = []
+            for i in range(self.params_table.rowCount()):
+                val_widget = self.params_table.cellWidget(i, 3)
+                if isinstance(val_widget, QLineEdit):
+                    saved_vals.append(val_widget.text())
+                elif isinstance(val_widget, QComboBox):
+                    saved_vals.append(val_widget.currentText())
+                else:
+                    saved_vals.append("")
+
+            self._populate_params(self._input_args)
+
+            # Restore values
+            for i in range(min(len(saved_vals), self.params_table.rowCount())):
+                val_widget = self.params_table.cellWidget(i, 3)
+                if isinstance(val_widget, QLineEdit):
+                    val_widget.setText(saved_vals[i])
+                elif isinstance(val_widget, QComboBox):
+                    idx = val_widget.findText(saved_vals[i])
+                    if idx >= 0:
+                        val_widget.setCurrentIndex(idx)
 
     def set_client(self, client, server_name: str = ""):
         self._opcua_client = client

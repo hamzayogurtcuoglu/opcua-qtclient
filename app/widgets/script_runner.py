@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -236,44 +236,23 @@ class ScriptRunnerPanel(QWidget):
         outer.setSpacing(0)
 
         # Outer card frame
-        card = QFrame()
-        card.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BG_DARK};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 12px;
-            }}
-        """)
-        card_layout = QVBoxLayout(card)
+        self.card = QFrame()
+        card_layout = QVBoxLayout(self.card)
         card_layout.setContentsMargins(14, 14, 14, 14)
         card_layout.setSpacing(12)
 
         # ── Header ──
         header = QHBoxLayout()
-        icon = QLabel("▶")
-        icon.setStyleSheet(f"font-size: 16px; color: {Colors.SUCCESS}; background: transparent;")
-        header.addWidget(icon)
-        title = QLabel("Script Runner")
-        title.setStyleSheet(f"""
-            font-size: 15px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-        header.addWidget(title)
+        self.icon_label = QLabel("▶")
+        header.addWidget(self.icon_label)
+        self.title_label = QLabel("Script Runner")
+        header.addWidget(self.title_label)
         header.addStretch()
         card_layout.addLayout(header)
 
         # ── Load section ──
-        load_section = QFrame()
-        load_section.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BG_CARD};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 8px;
-            }}
-        """)
-        load_layout = QVBoxLayout(load_section)
+        self.load_section = QFrame()
+        load_layout = QVBoxLayout(self.load_section)
         load_layout.setContentsMargins(10, 10, 10, 10)
         load_layout.setSpacing(8)
 
@@ -288,24 +267,13 @@ class ScriptRunnerPanel(QWidget):
 
         # File name display
         self.file_label = QLabel("No script loaded")
-        self.file_label.setStyleSheet(f"""
-            font-size: 11px;
-            color: {Colors.TEXT_MUTED};
-            background: transparent;
-        """)
         self.file_label.setWordWrap(True)
         load_layout.addWidget(self.file_label)
 
-        card_layout.addWidget(load_section)
+        card_layout.addWidget(self.load_section)
 
         # ── Separator label ──
         self.params_label = QLabel("Parameters")
-        self.params_label.setStyleSheet(f"""
-            font-size: 12px;
-            font-weight: bold;
-            color: {Colors.TEXT_SECONDARY};
-            background: transparent;
-        """)
         self.params_label.hide()
         card_layout.addWidget(self.params_label)
 
@@ -315,31 +283,6 @@ class ScriptRunnerPanel(QWidget):
         self.args_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.args_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.args_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.args_table.horizontalHeader().setStyleSheet(f"""
-            QHeaderView::section {{
-                background-color: {Colors.BG_SURFACE};
-                color: {Colors.TEXT_SECONDARY};
-                border: none;
-                border-bottom: 1px solid {Colors.BORDER};
-                padding: 4px;
-                font-size: 11px;
-            }}
-        """)
-        self.args_table.setStyleSheet(f"""
-            QTableWidget {{
-                background-color: {Colors.BG_CARD};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 8px;
-                gridline-color: {Colors.BORDER};
-            }}
-            QTableWidget::item {{
-                color: {Colors.TEXT_PRIMARY};
-                padding: 2px 6px;
-            }}
-            QTableWidget::item:selected {{
-                background-color: {Colors.BG_HOVER};
-            }}
-        """)
         self.args_table.verticalHeader().setVisible(False)
         self.args_table.verticalHeader().setDefaultSectionSize(34)
         self.args_table.setMinimumHeight(80)
@@ -351,58 +294,23 @@ class ScriptRunnerPanel(QWidget):
 
         # Extra args (free text for unlisted flags)
         self.extra_args_label = QLabel("Extra arguments (optional)")
-        self.extra_args_label.setStyleSheet(f"""
-            font-size: 11px;
-            color: {Colors.TEXT_SECONDARY};
-            background: transparent;
-        """)
         self.extra_args_label.hide()
 
         from PyQt6.QtWidgets import QLineEdit
         self.extra_args_input = QLineEdit()
         self.extra_args_input.setPlaceholderText("e.g. --verbose --timeout 30")
-        self.extra_args_input.setStyleSheet(f"""
-            QLineEdit {{
-                background-color: {Colors.BG_INPUT};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 6px;
-                color: {Colors.TEXT_PRIMARY};
-                padding: 6px 10px;
-                font-size: 12px;
-            }}
-            QLineEdit:focus {{
-                border-color: {Colors.BORDER_FOCUS};
-            }}
-        """)
         self.extra_args_input.hide()
         card_layout.addWidget(self.extra_args_label)
         card_layout.addWidget(self.extra_args_input)
 
         # ── Output section label ──
-        output_label = QLabel("Output")
-        output_label.setStyleSheet(f"""
-            font-size: 12px;
-            font-weight: bold;
-            color: {Colors.TEXT_SECONDARY};
-            background: transparent;
-        """)
-        card_layout.addWidget(output_label)
+        self.output_label = QLabel("Output")
+        card_layout.addWidget(self.output_label)
 
         # ── Output terminal ──
         self.output_box = QTextEdit()
         self.output_box.setReadOnly(True)
         self.output_box.setMinimumHeight(160)
-        self.output_box.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: {Colors.BG_DARKEST};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 8px;
-                padding: 8px;
-                font-family: 'Menlo', 'Courier New', 'Courier';
-                font-size: 11px;
-                color: #a8d8a8;
-            }}
-        """)
         self.output_box.setPlaceholderText("Script output will appear here...")
         card_layout.addWidget(self.output_box, 1)
 
@@ -470,6 +378,161 @@ class ScriptRunnerPanel(QWidget):
         self.clear_btn = QPushButton("🗑")
         self.clear_btn.setFixedSize(34, 34)
         self.clear_btn.setToolTip("Clear output")
+        self.clear_btn.clicked.connect(self._on_clear)
+        ctrl_row.addWidget(self.clear_btn)
+
+        card_layout.addLayout(ctrl_row)
+        outer.addWidget(self.card)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {Colors.BG_DARK};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 12px;
+            }}
+        """)
+        
+        self.icon_label.setStyleSheet(f"font-size: 16px; color: {Colors.SUCCESS}; background: transparent;")
+        self.title_label.setStyleSheet(f"""
+            font-size: 15px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
+        
+        self.load_section.setStyleSheet(f"""
+            QFrame {{
+                background-color: {Colors.BG_CARD};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 8px;
+            }}
+        """)
+
+        # file_label styling is dependent on if script is loaded.
+        if self._script_path:
+            self.file_label.setStyleSheet(f"""
+                font-size: 11px;
+                color: {Colors.TEXT_PRIMARY};
+                background: transparent;
+            """)
+        else:
+            self.file_label.setStyleSheet(f"""
+                font-size: 11px;
+                color: {Colors.TEXT_MUTED};
+                background: transparent;
+            """)
+            
+        self.params_label.setStyleSheet(f"""
+            font-size: 12px;
+            font-weight: bold;
+            color: {Colors.TEXT_SECONDARY};
+            background: transparent;
+        """)
+
+        self.args_table.horizontalHeader().setStyleSheet(f"""
+            QHeaderView::section {{
+                background-color: {Colors.BG_SURFACE};
+                color: {Colors.TEXT_SECONDARY};
+                border: none;
+                border-bottom: 1px solid {Colors.BORDER};
+                padding: 4px;
+                font-size: 11px;
+            }}
+        """)
+        self.args_table.setStyleSheet(f"""
+            QTableWidget {{
+                background-color: {Colors.BG_CARD};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 8px;
+                gridline-color: {Colors.BORDER};
+            }}
+            QTableWidget::item {{
+                color: {Colors.TEXT_PRIMARY};
+                padding: 2px 6px;
+            }}
+            QTableWidget::item:selected {{
+                background-color: {Colors.BG_HOVER};
+            }}
+        """)
+        
+        self.extra_args_label.setStyleSheet(f"""
+            font-size: 11px;
+            color: {Colors.TEXT_SECONDARY};
+            background: transparent;
+        """)
+        self.extra_args_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {Colors.BG_INPUT};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 6px;
+                color: {Colors.TEXT_PRIMARY};
+                padding: 6px 10px;
+                font-size: 12px;
+            }}
+            QLineEdit:focus {{
+                border-color: {Colors.BORDER_FOCUS};
+            }}
+        """)
+        
+        self.output_label.setStyleSheet(f"""
+            font-size: 12px;
+            font-weight: bold;
+            color: {Colors.TEXT_SECONDARY};
+            background: transparent;
+        """)
+        self.output_box.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {Colors.BG_DARKEST};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 8px;
+                padding: 8px;
+                font-family: 'Menlo', 'Courier New', 'Courier';
+                font-size: 11px;
+                color: #a8d8a8;
+            }}
+        """)
+        
+        self.stop_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {Colors.ERROR};
+                border-radius: 6px;
+                color: {Colors.ERROR};
+                font-weight: bold;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.ERROR_BG};
+            }}
+            QPushButton:disabled {{
+                border-color: {Colors.BORDER};
+                color: {Colors.TEXT_MUTED};
+            }}
+        """)
+        
+        self.fav_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {Colors.NODE_METHOD};
+                border-radius: 6px;
+                color: {Colors.NODE_METHOD};
+                font-weight: bold;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.NODE_METHOD};
+                color: white;
+            }}
+            QPushButton:disabled {{
+                border-color: {Colors.BORDER};
+                color: {Colors.TEXT_MUTED};
+            }}
+        """)
+        
         self.clear_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
@@ -483,11 +546,26 @@ class ScriptRunnerPanel(QWidget):
                 border-color: {Colors.BORDER_LIGHT};
             }}
         """)
-        self.clear_btn.clicked.connect(self._on_clear)
-        ctrl_row.addWidget(self.clear_btn)
+        
+        if self._args_data:
+            # We need to re-render combo boxes and re-style types in the args table
+            saved_vals = []
+            for i in range(self.args_table.rowCount()):
+                val_widget = self.args_table.cellWidget(i, 2)
+                if isinstance(val_widget, QComboBox):
+                    saved_vals.append(val_widget.currentText())
+                else:
+                    saved_vals.append("")
 
-        card_layout.addLayout(ctrl_row)
-        outer.addWidget(card)
+            self._populate_args_table(self._args_data)
+
+            # Restore combobox values
+            for i in range(min(len(saved_vals), self.args_table.rowCount())):
+                val_widget = self.args_table.cellWidget(i, 2)
+                if isinstance(val_widget, QComboBox) and saved_vals[i]:
+                    idx = val_widget.findText(saved_vals[i])
+                    if idx >= 0:
+                        val_widget.setCurrentIndex(idx)
 
     # ── Script Loading ────────────────────────────────────────────────────────
 
@@ -499,20 +577,38 @@ class ScriptRunnerPanel(QWidget):
         if not path:
             return
 
+        self.load_script(path)
+
+    def load_script(self, path: str, saved_args: list = None):
+        """Load a script file and populate arguments."""
+        if not os.path.exists(path):
+            self._append_output(f"[Error] File not found: {path}\n", error=True)
+            return
+
         self._script_path = path
         filename = os.path.basename(path)
         self.file_label.setText(f"📄 {filename}")
-        self.file_label.setStyleSheet(f"""
-            font-size: 11px;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
+        self.update_theme()
         self.run_btn.setEnabled(True)
         self.fav_btn.setEnabled(True)
 
         # Detect arguments
         self._load_args(path)
         self._append_output(f"[Loaded] {path}\n")
+
+        # Restore saved arguments if any
+        if saved_args and self._args_data:
+            for i, val in enumerate(saved_args):
+                if i < self.args_table.rowCount():
+                    combo = self.args_table.cellWidget(i, 2)
+                    if isinstance(combo, QComboBox):
+                        idx = combo.findText(str(val))
+                        if idx >= 0:
+                            combo.setCurrentIndex(idx)
+                    else:
+                        item = self.args_table.item(i, 2)
+                        if item:
+                            item.setText(str(val))
 
     def _load_args(self, path: str):
         """Detect and display script arguments."""

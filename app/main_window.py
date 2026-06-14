@@ -19,7 +19,7 @@ from app.models import (
     ServerInfo, ConnectionStatus, NodeType, FavoriteItem, HistoryEntry,
 )
 from app.opcua_client import OpcUaClient
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 from app.widgets.server_panel import ServerPanel
 from app.widgets.connection_tab import ConnectionTab
 from app.widgets.favorites_panel import FavoritesPanel
@@ -42,9 +42,17 @@ class MainWindow(QMainWindow):
         self._clients: dict[str, OpcUaClient] = {}  # url -> client
         self._tabs: dict[str, ConnectionTab] = {}     # url -> tab
         self._settings: dict = {}
-        self._setup_ui()
         self._load_settings()
+        
+        # Apply theme from settings before setting up UI
+        theme = self._settings.get("theme", "dark")
+        theme_manager.apply_theme(theme)
+        
+        self._setup_ui()
         self._load_servers()
+        
+        # Connect to theme changes
+        theme_manager.theme_changed.connect(self.update_theme)
 
     def _setup_ui(self):
         self.setWindowTitle("OPC UA Client")
@@ -69,6 +77,7 @@ class MainWindow(QMainWindow):
 
         # Central split view: Servers | Tabs | Favorites
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setChildrenCollapsible(False)
 
         # Left: Server list
         self.server_panel = ServerPanel()
@@ -95,26 +104,12 @@ class MainWindow(QMainWindow):
         """)
 
         # Add "+" button for new connection
-        add_tab_btn = QPushButton("+")
-        add_tab_btn.setFixedSize(28, 28)
-        add_tab_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                border: none;
-                color: {Colors.TEXT_SECONDARY};
-                font-size: 18px;
-                font-weight: bold;
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: {Colors.BG_HOVER};
-                color: {Colors.TEXT_PRIMARY};
-            }}
-        """)
-        add_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_tab_btn.setToolTip("Add a new server connection")
-        add_tab_btn.clicked.connect(self._on_add_server)
-        self.tab_widget.setCornerWidget(add_tab_btn, Qt.Corner.TopRightCorner)
+        self.add_tab_btn = QPushButton("+")
+        self.add_tab_btn.setFixedSize(28, 28)
+        self.add_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.add_tab_btn.setToolTip("Add a new server connection")
+        self.add_tab_btn.clicked.connect(self._on_add_server)
+        self.tab_widget.setCornerWidget(self.add_tab_btn, Qt.Corner.TopRightCorner)
 
         self.main_splitter.addWidget(self.tab_widget)
 
@@ -138,6 +133,39 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(content_widget)
 
         # Status bar
+        self.statusBar().showMessage("Ready — No active connections")
+
+        # Initial style setup
+        self.update_theme()
+
+    def update_theme(self):
+        """Update inline styles when theme changes."""
+        self.tab_widget.setStyleSheet(f"""
+            QTabWidget::pane {{
+                border: none;
+                background-color: transparent;
+            }}
+            QTabBar::tab {{
+                padding: 8px 20px;
+                font-size: 12px;
+            }}
+        """)
+
+        self.add_tab_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                color: {Colors.TEXT_SECONDARY};
+                font-size: 18px;
+                font-weight: bold;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+                color: {Colors.TEXT_PRIMARY};
+            }}
+        """)
+
         self.statusBar().setStyleSheet(f"""
             QStatusBar {{
                 background-color: {Colors.BG_DARK};
@@ -147,14 +175,8 @@ class MainWindow(QMainWindow):
                 font-size: 11px;
             }}
         """)
-        self.statusBar().showMessage("Ready — No active connections")
 
-    def _create_toolbar(self):
-        """Create the top toolbar."""
-        toolbar = QToolBar()
-        toolbar.setMovable(False)
-        toolbar.setIconSize(QSize(18, 18))
-        toolbar.setStyleSheet(f"""
+        self.toolbar.setStyleSheet(f"""
             QToolBar {{
                 background-color: {Colors.BG_DARK};
                 border-bottom: 1px solid {Colors.BORDER};
@@ -163,32 +185,46 @@ class MainWindow(QMainWindow):
             }}
         """)
 
-        # App title
-        title_label = QLabel("  OPC UA Client  ")
-        title_label.setStyleSheet(f"""
+        self.title_label.setStyleSheet(f"""
             font-size: 14px;
             font-weight: bold;
             color: {Colors.TEXT_PRIMARY};
             background: transparent;
             padding: 0 8px;
         """)
-        toolbar.addWidget(title_label)
 
-        toolbar.addSeparator()
+        # Update toggle button text if theme changes
+        if hasattr(self, 'theme_btn'):
+            if theme_manager.current_mode == "light":
+                self.theme_btn.setText("🌙 Dark Mode")
+            else:
+                self.theme_btn.setText("☀️ Light Mode")
+
+    def _create_toolbar(self):
+        """Create the top toolbar."""
+        self.toolbar = QToolBar()
+        self.toolbar.setMovable(False)
+        self.toolbar.setIconSize(QSize(18, 18))
+
+        # App title
+        self.title_label = QLabel("  OPC UA Client  ")
+        self.toolbar.addWidget(self.title_label)
+
+        self.toolbar.addSeparator()
 
         # Find Server
         discover_btn = QToolButton()
         discover_btn.setText("🔍 Find Server")
         discover_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         discover_btn.clicked.connect(self._on_discover)
-        toolbar.addWidget(discover_btn)
+        self.toolbar.addWidget(discover_btn)
 
         # Refresh
         refresh_btn = QToolButton()
         refresh_btn.setText("🔄 Refresh Connections")
         refresh_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         refresh_btn.clicked.connect(self._on_refresh_all)
-        toolbar.addWidget(refresh_btn)
+        self.toolbar.addWidget(refresh_btn)
 
         # Spacer
         spacer = QWidget()
@@ -196,7 +232,7 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy(), spacer.sizePolicy().verticalPolicy())
         from PyQt6.QtWidgets import QSizePolicy
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        toolbar.addWidget(spacer)
+        self.toolbar.addWidget(spacer)
 
         # Favorites toggle
         fav_btn = QToolButton()
@@ -205,7 +241,7 @@ class MainWindow(QMainWindow):
         fav_btn.setCheckable(True)
         fav_btn.setChecked(True)
         fav_btn.toggled.connect(self._toggle_favorites)
-        toolbar.addWidget(fav_btn)
+        self.toolbar.addWidget(fav_btn)
 
         # Script Runner toggle
         self.script_runner_btn = QToolButton()
@@ -214,16 +250,23 @@ class MainWindow(QMainWindow):
         self.script_runner_btn.setCheckable(True)
         self.script_runner_btn.setChecked(False)
         self.script_runner_btn.toggled.connect(self._toggle_script_runner)
-        toolbar.addWidget(self.script_runner_btn)
+        self.toolbar.addWidget(self.script_runner_btn)
+
+        # Theme Toggle
+        self.theme_btn = QToolButton()
+        self.theme_btn.setText("☀️ Light Mode" if theme_manager.current_mode == "dark" else "🌙 Dark Mode")
+        self.theme_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.theme_btn.clicked.connect(self._toggle_theme)
+        self.toolbar.addWidget(self.theme_btn)
 
         # Settings
         settings_btn = QToolButton()
         settings_btn.setText("⚙️ Settings")
         settings_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         settings_btn.clicked.connect(self._on_settings)
-        toolbar.addWidget(settings_btn)
+        self.toolbar.addWidget(settings_btn)
 
-        self.addToolBar(toolbar)
+        self.addToolBar(self.toolbar)
 
     # ---- Server Management ----
 
@@ -384,11 +427,20 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Settings saved")
 
     def _on_favorite_clicked(self, item: FavoriteItem):
-        """Navigate to a favorited node in its server's tree."""
+        """Navigate to a favorited node in its server's tree or load a script."""
+        if item.node_type == NodeType.SCRIPT:
+            self.script_runner_btn.setChecked(True)
+            self._toggle_script_runner(True)
+            self.script_runner_panel.load_script(item.node_id, item.input_args)
+            self.script_runner_panel._on_run()
+            return
+
         async def load_and_populate(tab):
             await tab._load_node_info(item.node_id)
-            if item.node_type == NodeType.METHOD and item.input_args:
-                tab.node_info.call_method_tab.populate_saved_args(item.input_args)
+            if item.node_type == NodeType.METHOD:
+                if item.input_args:
+                    tab.node_info.call_method_tab.populate_saved_args(item.input_args)
+                tab.node_info.call_method_tab._on_call()
 
         # Find the tab for this server if it matches
         if item.server_url and item.server_url in self._tabs:
@@ -442,11 +494,22 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Failed to save settings: {e}")
 
+    def _toggle_theme(self):
+        """Toggle between light and dark themes."""
+        new_theme = "light" if theme_manager.current_mode == "dark" else "dark"
+        theme_manager.apply_theme(new_theme)
+        
+        # Save preference
+        self._settings["theme"] = new_theme
+        self._save_settings()
+
     def _load_settings(self):
         try:
             if os.path.exists(SETTINGS_FILE):
                 with open(SETTINGS_FILE, "r") as f:
                     self._settings = json.load(f)
+                if "theme" in self._settings:
+                    theme_manager.apply_theme(self._settings["theme"])
         except Exception as e:
             logger.error(f"Failed to load settings: {e}")
 

@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 
 from app.models import NodeInfo, NodeType, MethodArgument, ConnectionStatus
 from app.opcua_client import OpcUaClient
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 from app.widgets.address_tree import AddressTreeWidget
 from app.widgets.node_info import NodeInfoWidget
 
@@ -40,15 +40,8 @@ class ConnectionTab(QWidget):
         layout.setSpacing(0)
 
         # Container frame
-        container = QFrame()
-        container.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BG_DARK};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 12px;
-            }}
-        """)
-        container_layout = QVBoxLayout(container)
+        self.container = QFrame()
+        container_layout = QVBoxLayout(self.container)
         container_layout.setContentsMargins(14, 14, 14, 14)
         container_layout.setSpacing(10)
 
@@ -60,20 +53,9 @@ class ConnectionTab(QWidget):
         info_layout.setSpacing(2)
 
         self.title_label = QLabel(self.server_name)
-        self.title_label.setStyleSheet(f"""
-            font-size: 16px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
         info_layout.addWidget(self.title_label)
 
         self.url_label = QLabel(self.server_url)
-        self.url_label.setStyleSheet(f"""
-            font-size: 11px;
-            color: {Colors.TEXT_MUTED};
-            background: transparent;
-        """)
         info_layout.addWidget(self.url_label)
 
         header_layout.addLayout(info_layout)
@@ -81,31 +63,10 @@ class ConnectionTab(QWidget):
 
         # Status badge
         self.status_badge = QLabel("● Connected")
-        self.status_badge.setStyleSheet(f"""
-            color: {Colors.SUCCESS};
-            font-size: 12px;
-            font-weight: bold;
-            background: transparent;
-            padding: 4px 8px;
-        """)
         header_layout.addWidget(self.status_badge)
 
         # Disconnect button
         self.disconnect_btn = QPushButton("⚡ Disconnect")
-        self.disconnect_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {Colors.ERROR_BG};
-                color: {Colors.ERROR};
-                border: 1px solid {Colors.ERROR};
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 11px;
-            }}
-            QPushButton:hover {{
-                background-color: {Colors.ERROR};
-                color: white;
-            }}
-        """)
         self.disconnect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.disconnect_btn.clicked.connect(
             lambda: self.disconnect_requested.emit(self.server_url)
@@ -115,20 +76,6 @@ class ConnectionTab(QWidget):
         # More button
         self.more_btn = QPushButton("···")
         self.more_btn.setFixedSize(32, 32)
-        self.more_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                border: 1px solid {Colors.BORDER};
-                border-radius: 6px;
-                color: {Colors.TEXT_SECONDARY};
-                font-size: 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {Colors.BG_HOVER};
-                color: {Colors.TEXT_PRIMARY};
-            }}
-        """)
         header_layout.addWidget(self.more_btn)
 
         container_layout.addLayout(header_layout)
@@ -157,7 +104,80 @@ class ConnectionTab(QWidget):
 
         container_layout.addWidget(self.content_splitter, 1)
 
-        layout.addWidget(container)
+        layout.addWidget(self.container)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.container.setStyleSheet(f"""
+            QFrame {{
+                background-color: {Colors.BG_DARK};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 12px;
+            }}
+        """)
+
+        self.title_label.setStyleSheet(f"""
+            font-size: 16px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
+
+        self.url_label.setStyleSheet(f"""
+            font-size: 11px;
+            color: {Colors.TEXT_MUTED};
+            background: transparent;
+        """)
+
+        # Re-apply status color via update_connection_status method logic,
+        # but if we don't have the status variable saved, we can infer it from text:
+        text = self.status_badge.text()
+        if "Connected" in text:
+            color = Colors.SUCCESS
+        elif "Error" in text:
+            color = Colors.ERROR
+        else:
+            color = Colors.TEXT_MUTED
+            
+        self.status_badge.setStyleSheet(f"""
+            color: {color};
+            font-size: 12px;
+            font-weight: bold;
+            background: transparent;
+            padding: 4px 8px;
+        """)
+
+        self.disconnect_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Colors.ERROR_BG};
+                color: {Colors.ERROR};
+                border: 1px solid {Colors.ERROR};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.ERROR};
+                color: white;
+            }}
+        """)
+
+        self.more_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: 1px solid {Colors.BORDER};
+                border-radius: 6px;
+                color: {Colors.TEXT_SECONDARY};
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+                color: {Colors.TEXT_PRIMARY};
+            }}
+        """)
 
     def _connect_signals(self):
         self.address_tree.node_selected.connect(self._on_node_selected)

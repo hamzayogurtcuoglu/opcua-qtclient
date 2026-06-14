@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.models import FavoriteItem, NodeType
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 
 FAVORITES_FILE = os.path.join(os.path.expanduser("~"), ".opcua_client_favorites.json")
 
@@ -30,6 +30,49 @@ class FavoriteCard(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def _setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 10, 8, 10)
+        layout.setSpacing(10)
+
+        # Info section
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(2)
+
+        # Name + badge
+        name_row = QHBoxLayout()
+        self.name_label = QLabel(self.fav_item.display_name)
+        name_row.addWidget(self.name_label)
+
+        # Type badge
+        badge_text = self.fav_item.node_type.value
+        self.badge = QLabel(badge_text)
+        name_row.addWidget(self.badge)
+        name_row.addStretch()
+        info_layout.addLayout(name_row)
+
+        # Server Name
+        if self.fav_item.server_name:
+            self.server_label = QLabel(f"🖧 {self.fav_item.server_name}")
+            info_layout.addWidget(self.server_label)
+
+        # Node ID
+        self.node_id_label = QLabel(self.fav_item.node_id)
+        self.node_id_label.setWordWrap(True)
+        info_layout.addWidget(self.node_id_label)
+
+        layout.addLayout(info_layout, 1)
+
+        # Remove button
+        self.remove_btn = QPushButton("✕")
+        self.remove_btn.setFixedSize(22, 22)
+        self.remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.fav_item))
+        layout.addWidget(self.remove_btn, 0, Qt.AlignmentFlag.AlignTop)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
         self.setStyleSheet(f"""
             FavoriteCard {{
                 background-color: {Colors.BG_CARD};
@@ -42,30 +85,15 @@ class FavoriteCard(QFrame):
             }}
         """)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 8, 10)
-        layout.setSpacing(10)
-
-        # Info section
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)
-
-        # Name + badge
-        name_row = QHBoxLayout()
-        name_label = QLabel(self.fav_item.display_name)
-        name_label.setStyleSheet(f"""
+        self.name_label.setStyleSheet(f"""
             font-weight: bold;
             font-size: 13px;
             color: {Colors.TEXT_PRIMARY};
             background: transparent;
         """)
-        name_row.addWidget(name_label)
 
-        # Type badge
-        badge_text = self.fav_item.node_type.value
-        badge = QLabel(badge_text)
         if self.fav_item.node_type == NodeType.VARIABLE:
-            badge.setStyleSheet(f"""
+            self.badge.setStyleSheet(f"""
                 background-color: {Colors.BADGE_VARIABLE};
                 color: {Colors.BADGE_VARIABLE_TEXT};
                 border-radius: 4px;
@@ -74,7 +102,7 @@ class FavoriteCard(QFrame):
                 font-weight: bold;
             """)
         elif self.fav_item.node_type == NodeType.METHOD:
-            badge.setStyleSheet(f"""
+            self.badge.setStyleSheet(f"""
                 background-color: {Colors.BADGE_METHOD};
                 color: {Colors.BADGE_METHOD_TEXT};
                 border-radius: 4px;
@@ -83,16 +111,16 @@ class FavoriteCard(QFrame):
                 font-weight: bold;
             """)
         elif self.fav_item.node_type == NodeType.SCRIPT:
-            badge.setStyleSheet(f"""
-                background-color: #1a3a2a;
-                color: #4ade80;
+            self.badge.setStyleSheet(f"""
+                background-color: {Colors.SUCCESS_BG};
+                color: {Colors.SUCCESS};
                 border-radius: 4px;
                 padding: 2px 6px;
                 font-size: 9px;
                 font-weight: bold;
             """)
         else:
-            badge.setStyleSheet(f"""
+            self.badge.setStyleSheet(f"""
                 background-color: {Colors.BG_SURFACE};
                 color: {Colors.TEXT_SECONDARY};
                 border-radius: 4px;
@@ -100,36 +128,21 @@ class FavoriteCard(QFrame):
                 font-size: 9px;
                 font-weight: bold;
             """)
-        name_row.addWidget(badge)
-        name_row.addStretch()
-        info_layout.addLayout(name_row)
 
-        # Server Name
-        if self.fav_item.server_name:
-            server_label = QLabel(f"🖧 {self.fav_item.server_name}")
-            server_label.setStyleSheet(f"""
+        if hasattr(self, 'server_label'):
+            self.server_label.setStyleSheet(f"""
                 font-size: 11px;
                 color: {Colors.TEXT_SECONDARY};
                 background: transparent;
             """)
-            info_layout.addWidget(server_label)
 
-        # Node ID
-        node_id_label = QLabel(self.fav_item.node_id)
-        node_id_label.setStyleSheet(f"""
+        self.node_id_label.setStyleSheet(f"""
             font-size: 10px;
             color: {Colors.TEXT_MUTED};
             background: transparent;
         """)
-        node_id_label.setWordWrap(True)
-        info_layout.addWidget(node_id_label)
 
-        layout.addLayout(info_layout, 1)
-
-        # Remove button
-        remove_btn = QPushButton("✕")
-        remove_btn.setFixedSize(22, 22)
-        remove_btn.setStyleSheet(f"""
+        self.remove_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 border: none;
@@ -142,9 +155,6 @@ class FavoriteCard(QFrame):
                 background-color: {Colors.ERROR_BG};
             }}
         """)
-        remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.fav_item))
-        layout.addWidget(remove_btn, 0, Qt.AlignmentFlag.AlignTop)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -218,15 +228,8 @@ class FavoritesPanel(QWidget):
         layout.setSpacing(0)
 
         # Panel container
-        panel = QFrame()
-        panel.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BG_DARK};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 12px;
-            }}
-        """)
-        panel_layout = QVBoxLayout(panel)
+        self.panel = QFrame()
+        panel_layout = QVBoxLayout(self.panel)
         panel_layout.setContentsMargins(12, 14, 12, 14)
         panel_layout.setSpacing(10)
 
@@ -236,14 +239,8 @@ class FavoritesPanel(QWidget):
         star_icon.setStyleSheet("font-size: 16px; background: transparent;")
         header_layout.addWidget(star_icon)
 
-        title = QLabel("Favorites")
-        title.setStyleSheet(f"""
-            font-size: 15px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-        header_layout.addWidget(title)
+        self.title_label = QLabel("Favorites")
+        header_layout.addWidget(self.title_label)
         header_layout.addStretch()
         panel_layout.addLayout(header_layout)
 
@@ -264,7 +261,26 @@ class FavoritesPanel(QWidget):
         scroll.setWidget(self.list_widget)
         panel_layout.addWidget(scroll, 1)
 
-        layout.addWidget(panel)
+        layout.addWidget(self.panel)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.panel.setStyleSheet(f"""
+            QFrame {{
+                background-color: {Colors.BG_DARK};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 12px;
+            }}
+        """)
+        
+        self.title_label.setStyleSheet(f"""
+            font-size: 15px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
 
     def add_favorite(self, node_id: str, display_name: str, node_type: NodeType,
                      server_url: str = "", server_name: str = "", args: list = None):

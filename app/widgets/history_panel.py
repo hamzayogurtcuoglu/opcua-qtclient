@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.models import HistoryEntry, OperationResult
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 
 MAX_HISTORY = 1000
 
@@ -28,27 +28,14 @@ class HistoryPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        panel = QFrame()
-        panel.setStyleSheet(f"""
-            QFrame {{
-                background-color: {Colors.BG_DARK};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 12px;
-            }}
-        """)
-        panel_layout = QVBoxLayout(panel)
+        self.panel = QFrame()
+        panel_layout = QVBoxLayout(self.panel)
         panel_layout.setContentsMargins(12, 12, 12, 12)
         panel_layout.setSpacing(8)
 
         # Header
-        header = QLabel("Operation History")
-        header.setStyleSheet(f"""
-            font-size: 14px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
-            background: transparent;
-        """)
-        panel_layout.addWidget(header)
+        self.header = QLabel("Operation History")
+        panel_layout.addWidget(self.header)
 
         # Table
         self.table = QTableWidget(0, 6)
@@ -80,15 +67,51 @@ class HistoryPanel(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
+
+        panel_layout.addWidget(self.table, 1)
+
+        layout.addWidget(self.panel)
+
+        self.update_theme()
+        theme_manager.theme_changed.connect(self.update_theme)
+
+    def update_theme(self):
+        self.panel.setStyleSheet(f"""
+            QFrame {{
+                background-color: {Colors.BG_DARK};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 12px;
+            }}
+        """)
+        self.header.setStyleSheet(f"""
+            font-size: 14px;
+            font-weight: bold;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        """)
         self.table.setStyleSheet(f"""
             QTableWidget {{
                 alternate-background-color: {Colors.BG_MEDIUM};
             }}
         """)
 
-        panel_layout.addWidget(self.table, 1)
-
-        layout.addWidget(panel)
+        # Update existing items
+        for row in range(self.table.rowCount()):
+            # Time and NodeId (cols 0 and 2)
+            for col in (0, 2):
+                item = self.table.item(row, col)
+                if item:
+                    item.setForeground(QBrush(QColor(Colors.TEXT_SECONDARY)))
+            
+            # Result (col 4)
+            result_item = self.table.item(row, 4)
+            if result_item:
+                if result_item.text() == OperationResult.SUCCESS.value:
+                    result_item.setForeground(QBrush(QColor(Colors.SUCCESS)))
+                    result_item.setBackground(QBrush(QColor(Colors.SUCCESS_BG)))
+                else:
+                    result_item.setForeground(QBrush(QColor(Colors.ERROR)))
+                    result_item.setBackground(QBrush(QColor(Colors.ERROR_BG)))
 
     def add_entry(self, entry: HistoryEntry):
         """Add a new operation entry to the history."""
