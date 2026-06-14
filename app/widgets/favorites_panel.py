@@ -235,7 +235,7 @@ class FavoritesPanel(QWidget):
 
         # Header
         header_layout = QHBoxLayout()
-        star_icon = QLabel("⭐")
+        star_icon = QLabel("★")
         star_icon.setStyleSheet("font-size: 16px; background: transparent;")
         header_layout.addWidget(star_icon)
 
@@ -307,10 +307,11 @@ class FavoritesPanel(QWidget):
     def add_favorite(self, node_id: str, display_name: str, node_type: NodeType,
                      server_url: str = "", server_name: str = "", args: list = None):
         """Add a node to favorites."""
-        # Check if already exists
-        for card in self._cards:
-            if card.fav_item.node_id == node_id:
-                return
+        # Check if already exists (skip for methods and scripts so we can have duplicates with diff args)
+        if node_type not in (NodeType.METHOD, NodeType.SCRIPT):
+            for card in self._cards:
+                if card.fav_item.node_id == node_id and card.fav_item.node_type == node_type:
+                    return
 
         item = FavoriteItem(
             display_name=display_name,
@@ -341,7 +342,7 @@ class FavoritesPanel(QWidget):
 
     def _remove_favorite(self, item: FavoriteItem):
         for card in self._cards:
-            if card.fav_item.node_id == item.node_id:
+            if card.fav_item.id == item.id:
                 self._cards.remove(card)
                 card.deleteLater()
                 break
@@ -360,7 +361,7 @@ class FavoritesPanel(QWidget):
             item.display_name = new_name.strip()
             # Rebuild the card
             for card in self._cards:
-                if card.fav_item.node_id == item.node_id:
+                if card.fav_item.id == item.id:
                     pos = self.list_layout.indexOf(card)
                     self._cards.remove(card)
                     card.deleteLater()
@@ -383,11 +384,8 @@ class FavoritesPanel(QWidget):
         import os
         node_id = os.path.basename(script_path)
         
-        # Check if already exists
-        for card in self._cards:
-            if card.fav_item.node_id == node_id and card.fav_item.node_type == NodeType.SCRIPT:
-                return
-                
+        # Allow duplicates for scripts so no return here.
+        
         # Read script content if not provided
         if not script_content:
             try:

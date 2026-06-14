@@ -350,7 +350,7 @@ class ScriptRunnerPanel(QWidget):
         self.stop_btn.setEnabled(False)
         ctrl_row.addWidget(self.stop_btn)
 
-        self.fav_btn = QPushButton("⭐ Favorite")
+        self.fav_btn = QPushButton("★ Favorite")
         self.fav_btn.setMinimumHeight(34)
         self.fav_btn.setStyleSheet(f"""
             QPushButton {{

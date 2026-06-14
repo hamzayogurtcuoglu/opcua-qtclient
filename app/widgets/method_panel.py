@@ -53,7 +53,7 @@ class MethodPanel(QWidget):
         self.method_combo.currentTextChanged.connect(self._on_method_changed)
         method_row.addWidget(self.method_combo, 1)
 
-        self.fav_btn = QPushButton("⭐")
+        self.fav_btn = QPushButton("★")
         self.fav_btn.setFixedSize(28, 28)
         self.fav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.fav_btn.clicked.connect(self._on_favorite)

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
+import uuid
 
 
 class ConnectionStatus(Enum):
@@ -102,9 +103,11 @@ class FavoriteItem:
     server_name: str = ""
     input_args: list = field(default_factory=list)
     script_content: str = ""
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     def to_dict(self) -> dict:
         return {
+            "id": self.id,
             "display_name": self.display_name,
             "node_id": self.node_id,
             "node_type": self.node_type.value,
@@ -128,6 +131,7 @@ class FavoriteItem:
             server_name=data.get("server_name", ""),
             input_args=data.get("input_args", []),
             script_content=data.get("script_content", ""),
+            id=data.get("id", uuid.uuid4().hex),
         )
 
 

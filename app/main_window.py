@@ -84,6 +84,7 @@ class MainWindow(QMainWindow):
         self.server_panel.server_connect_requested.connect(self._on_connect_server)
         self.server_panel.server_disconnect_requested.connect(self._on_disconnect_server)
         self.server_panel.server_clicked.connect(self._on_server_clicked)
+        self.server_panel.server_edit_requested.connect(self._on_edit_server)
         self.server_panel.add_server_requested.connect(self._on_add_server)
         self.main_splitter.addWidget(self.server_panel)
 
@@ -111,7 +112,7 @@ class MainWindow(QMainWindow):
         self.favorites_panel = FavoritesPanel()
         self.favorites_panel.favorite_clicked.connect(self._on_favorite_clicked)
 
-        self.fav_dock = QDockWidget("⭐  Favorites", self)
+        self.fav_dock = QDockWidget("★ Favorites", self)
         self.fav_dock.setWidget(self.favorites_panel)
         self.fav_dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea |
@@ -266,8 +267,24 @@ class MainWindow(QMainWindow):
             QToolBar {{
                 background-color: {Colors.BG_DARK};
                 border-bottom: 1px solid {Colors.BORDER};
-                padding: 4px 12px;
-                spacing: 4px;
+                padding: 8px 16px;
+                spacing: 8px;
+            }}
+            QToolButton {{
+                background-color: transparent;
+                color: {Colors.TEXT_SECONDARY};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 13px;
+                font-weight: 500;
+            }}
+            QToolButton:hover {{
+                background-color: {Colors.BG_HOVER};
+                color: {Colors.TEXT_PRIMARY};
+            }}
+            QToolButton:checked {{
+                background-color: {Colors.ACCENT};
+                color: white;
             }}
         """)
 
@@ -300,14 +317,14 @@ class MainWindow(QMainWindow):
 
         # Find Server
         discover_btn = QToolButton()
-        discover_btn.setText("🔍 Find Server")
+        discover_btn.setText("⌕ Find Server")
         discover_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         discover_btn.clicked.connect(self._on_discover)
         self.toolbar.addWidget(discover_btn)
 
         # Refresh
         refresh_btn = QToolButton()
-        refresh_btn.setText("🔄 Refresh Connections")
+        refresh_btn.setText("↻ Refresh Connections")
         refresh_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         refresh_btn.clicked.connect(self._on_refresh_all)
         self.toolbar.addWidget(refresh_btn)
@@ -322,7 +339,7 @@ class MainWindow(QMainWindow):
 
         # Favorites toggle
         self.fav_btn = QToolButton()
-        self.fav_btn.setText("⭐ Favorites")
+        self.fav_btn.setText("★ Favorites")
         self.fav_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.fav_btn.setCheckable(True)
         self.fav_btn.setChecked(False)
@@ -351,20 +368,20 @@ class MainWindow(QMainWindow):
 
         # Import/Export
         import_btn = QToolButton()
-        import_btn.setText("📂 Import")
+        import_btn.setText("⬇ Import")
         import_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         import_btn.clicked.connect(self._on_import_config)
         self.toolbar.addWidget(import_btn)
 
         export_btn = QToolButton()
-        export_btn.setText("💾 Export")
+        export_btn.setText("⬆ Export")
         export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         export_btn.clicked.connect(self._on_export_config)
         self.toolbar.addWidget(export_btn)
 
         # Settings
         settings_btn = QToolButton()
-        settings_btn.setText("⚙️ Settings")
+        settings_btn.setText("⚙ Settings")
         settings_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         settings_btn.clicked.connect(self._on_settings)
         self.toolbar.addWidget(settings_btn)
@@ -382,6 +399,16 @@ class MainWindow(QMainWindow):
                 self.server_panel.add_server(server)
                 self._save_servers()
                 self.statusBar().showMessage(f"Added server: {server.name}")
+
+    def _on_edit_server(self, server_info: ServerInfo):
+        """Show dialog to edit an existing server."""
+        dialog = AddServerDialog(self, edit_server=server_info)
+        if dialog.exec():
+            new_info = dialog.get_result()
+            if new_info:
+                self.server_panel.update_server(server_info.url, new_info)
+                self._save_servers()
+                self.statusBar().showMessage(f"Updated server: {new_info.name}")
 
     def _on_discover(self):
         """Show server discovery dialog."""

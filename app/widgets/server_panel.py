@@ -59,6 +59,12 @@ class ServerCard(QFrame):
         self.update_theme()
         theme_manager.theme_changed.connect(self.update_theme)
 
+    def update_info(self, info: ServerInfo):
+        self.server_info = info
+        self.name_label.setText(info.name)
+        self.url_label.setText(info.url)
+        self.update_status(info.status)
+
     def update_theme(self):
         self.setStyleSheet(f"""
             ServerCard {{
@@ -150,6 +156,7 @@ class ServerPanel(QWidget):
     server_connect_requested = pyqtSignal(ServerInfo)
     server_disconnect_requested = pyqtSignal(ServerInfo)
     server_clicked = pyqtSignal(ServerInfo)
+    server_edit_requested = pyqtSignal(ServerInfo)
     add_server_requested = pyqtSignal()
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -294,6 +301,7 @@ class ServerPanel(QWidget):
         card.clicked.connect(self.server_clicked.emit)
         card.connect_requested.connect(self.server_connect_requested.emit)
         card.disconnect_requested.connect(self.server_disconnect_requested.emit)
+        card.edit_requested.connect(self.server_edit_requested.emit)
         card.remove_requested.connect(self._remove_server)
         self._cards.append(card)
         # Insert before the stretch
@@ -304,6 +312,13 @@ class ServerPanel(QWidget):
             if card.server_info.url == server_info.url:
                 self._cards.remove(card)
                 card.deleteLater()
+                break
+
+    def update_server(self, old_url: str, new_info: ServerInfo):
+        """Update an existing server card with new info."""
+        for card in self._cards:
+            if card.server_info.url == old_url:
+                card.update_info(new_info)
                 break
 
     def update_server_status(self, url: str, status: ConnectionStatus):

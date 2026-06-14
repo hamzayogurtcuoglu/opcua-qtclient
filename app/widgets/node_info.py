@@ -488,7 +488,7 @@ class CallMethodTab(QWidget):
         self.call_btn.clicked.connect(self._on_call)
         btn_layout.addWidget(self.call_btn)
 
-        self.fav_btn = QPushButton("⭐ Favorite")
+        self.fav_btn = QPushButton("★ Favorite")
         self.fav_btn.setMinimumHeight(34)
         self.fav_btn.clicked.connect(self._on_favorite)
         btn_layout.addWidget(self.fav_btn)
