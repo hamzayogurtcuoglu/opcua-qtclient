@@ -32,6 +32,16 @@ def _node_class_to_type(node_class: ua.NodeClass) -> NodeType:
     return mapping.get(node_class, NodeType.UNKNOWN)
 
 
+class SubscriptionHandler:
+    """Receives data change events for subscriptions."""
+    def __init__(self, callback):
+        self.callback = callback
+
+    def datachange_notification(self, node: Node, val, data):
+        """Called when a subscribed node's value changes."""
+        self.callback(node.nodeid.to_string(), val)
+
+
 class OpcUaClient(QObject):
     """Asynchronous OPC UA client with Qt signal integration.
 
@@ -43,13 +53,23 @@ class OpcUaClient(QObject):
     connection_changed = pyqtSignal(str, ConnectionStatus)  # url, status
     error_occurred = pyqtSignal(str, str)  # operation, error_message
     operation_logged = pyqtSignal(HistoryEntry)
+    data_changed = pyqtSignal(str, object)  # node_id, value
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
         self._client: Optional[Client] = None
         self._url: str = ""
         self._status: ConnectionStatus = ConnectionStatus.DISCONNECTED
+        self._nodes: dict[str, Node] = {}
+        
         self._subscription: Optional[Subscription] = None
+        self._sub_handler: Optional[SubscriptionHandler] = None
+        self._monitored_nodes = {}  # node_id -> handle
+        self._monitored_names = {}  # node_id -> name
+
+    def _on_datachange(self, node_id: str, val: Any):
+        name = self._monitored_names.get(node_id, node_id)
+        self.data_changed.emit(node_id, name, val)
 
     @property
     def url(self) -> str:
@@ -261,6 +281,37 @@ class OpcUaClient(QObject):
                 OperationResult.FAILURE, str(e)
             )
             return None
+
+    async def subscribe_node(self, node_id: str, node_name: str = "", period: int = 500) -> bool:
+        """Subscribe to data changes for a node."""
+        if not self._client:
+            return False
+        try:
+            if not self._subscription:
+                self._sub_handler = SubscriptionHandler(self._on_datachange)
+                self._subscription = await self._client.create_subscription(period, self._sub_handler)
+            
+            node = self._get_node(node_id)
+            handle = await self._subscription.subscribe_data_change(node)
+            self._monitored_nodes[node_id] = handle
+            self._monitored_names[node_id] = node_name or node_id
+            return True
+        except Exception as e:
+            logger.error(f"Failed to subscribe to {node_id}: {e}")
+            self.error_occurred.emit("Subscribe", str(e))
+            return False
+
+    async def unsubscribe_node(self, node_id: str) -> bool:
+        """Unsubscribe from data changes for a node."""
+        if not self._subscription or node_id not in self._monitored_nodes:
+            return False
+        try:
+            handle = self._monitored_nodes.pop(node_id)
+            await self._subscription.unsubscribe(handle)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to unsubscribe from {node_id}: {e}")
+            return False
 
     async def write_value(
         self, node_id: str, value: Any, data_type: str = "",

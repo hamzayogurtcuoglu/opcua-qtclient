@@ -84,6 +84,10 @@ class SettingsDialog(QDialog):
         ui_layout = QFormLayout()
         ui_layout.setSpacing(12)
 
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Dark Mode", "Light Mode"])
+        ui_layout.addRow("Application Theme:", self.theme_combo)
+
         self.max_history_spin = QSpinBox()
         self.max_history_spin.setRange(100, 10000)
         self.max_history_spin.setValue(1000)
@@ -146,6 +150,9 @@ class SettingsDialog(QDialog):
             idx = self.security_combo.findText(self._settings.get("default_security", "None"))
             if idx >= 0:
                 self.security_combo.setCurrentIndex(idx)
+            
+            theme = self._settings.get("theme", "dark")
+            self.theme_combo.setCurrentText("Dark Mode" if theme == "dark" else "Light Mode")
 
     def _on_save(self):
         self._settings = {
@@ -156,6 +163,7 @@ class SettingsDialog(QDialog):
             "default_security": self.security_combo.currentText(),
             "auto_expand": self.auto_expand.isChecked(),
             "show_timestamps": self.show_timestamps.isChecked(),
+            "theme": "dark" if self.theme_combo.currentText() == "Dark Mode" else "light",
         }
         self.accept()
 

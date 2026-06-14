@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget,
     QTableWidget, QTableWidgetItem, QPushButton, QLineEdit,
     QComboBox, QTextEdit, QFrame, QHeaderView, QSpinBox,
-    QFormLayout, QSizePolicy,
+    QFormLayout, QSizePolicy, QCheckBox
 )
 
 from app.models import NodeInfo, NodeType, MethodArgument
@@ -191,11 +191,10 @@ class DataAccessTab(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self._node_id: Optional[str] = None
         self._opcua_client = None
         self._server_name = ""
-        self._auto_refresh_timer = QTimer(self)
-        self._auto_refresh_timer.timeout.connect(self._on_auto_refresh)
+        self._node_id = ""
+        self._node_name = ""
         self._setup_ui()
 
     def _setup_ui(self):
@@ -215,16 +214,9 @@ class DataAccessTab(QWidget):
         
         header_layout.addStretch()
         
-        self.auto_label = QLabel("Auto-refresh:")
-        header_layout.addWidget(self.auto_label)
-        
-        self.interval_spin = QSpinBox()
-        self.interval_spin.setRange(0, 60)
-        self.interval_spin.setValue(0)
-        self.interval_spin.setSuffix("s")
-        self.interval_spin.setToolTip("Set to 0 to disable auto-refresh")
-        self.interval_spin.valueChanged.connect(self._on_interval_changed)
-        header_layout.addWidget(self.interval_spin)
+        self.subscribe_cb = QCheckBox("Monitor (Subscribe)")
+        self.subscribe_cb.stateChanged.connect(self._on_subscribe_toggled)
+        header_layout.addWidget(self.subscribe_cb)
         
         self.refresh_btn = QPushButton("⟳ Refresh")
         self.refresh_btn.setProperty("class", "primary")
@@ -320,7 +312,7 @@ class DataAccessTab(QWidget):
         """)
 
         self.type_display.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: 11px; font-weight: bold; border: none;")
-        self.auto_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; border: none;")
+        self.subscribe_cb.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; border: none;")
         self.timestamp_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 11px; border: none;")
 
         if not self.status_label.text():
@@ -336,6 +328,7 @@ class DataAccessTab(QWidget):
 
     def set_node(self, node_id: str, info: NodeInfo):
         self._node_id = node_id
+        self._node_name = info.display_name
         
         # Read part
         if info.value is not None:
@@ -356,9 +349,14 @@ class DataAccessTab(QWidget):
         if self._node_id and self._opcua_client:
             asyncio.ensure_future(self._refresh_value())
 
-    def _on_auto_refresh(self):
-        if self._node_id and self._opcua_client:
-            asyncio.ensure_future(self._refresh_value())
+    def _on_subscribe_toggled(self, state: int):
+        if not self._node_id or not self._opcua_client:
+            return
+        import asyncio
+        if state == 2:  # Checked
+            asyncio.ensure_future(self._opcua_client.subscribe_node(self._node_id, self._node_name))
+        else:
+            asyncio.ensure_future(self._opcua_client.unsubscribe_node(self._node_id))
 
     async def _refresh_value(self):
         if not self._node_id or not self._opcua_client:
@@ -368,18 +366,13 @@ class DataAccessTab(QWidget):
             self.value_display.setText(str(value))
         self._update_timestamp()
 
-    def _on_interval_changed(self, value: int):
-        self._auto_refresh_timer.stop()
-        if value > 0:
-            self._auto_refresh_timer.start(value * 1000)
+    def stop_auto_refresh(self):
+        pass  # Kept for compatibility if called elsewhere
 
     def _update_timestamp(self):
         from datetime import datetime
         now = datetime.now().strftime("%H:%M:%S")
         self.timestamp_label.setText(f"Last updated: {now}")
-
-    def stop_auto_refresh(self):
-        self._auto_refresh_timer.stop()
 
     def _on_write(self):
         if self._node_id and self._opcua_client:
@@ -584,9 +577,8 @@ class CallMethodTab(QWidget):
                 else:
                     saved_vals.append("")
 
-            self._populate_params(self._input_args)
-
-            # Restore values
+            if hasattr(self, '_method_node_id'):
+                self.set_method(self._method_node_id, self._method_display_name, self._parent_node_id, self._input_args, getattr(self, '_output_args', []))            # Restore values
             for i in range(min(len(saved_vals), self.params_table.rowCount())):
                 val_widget = self.params_table.cellWidget(i, 3)
                 if isinstance(val_widget, QLineEdit):
@@ -608,6 +600,7 @@ class CallMethodTab(QWidget):
         self._input_args = input_args
         if output_args is None:
             output_args = []
+        self._output_args = output_args
 
         self.method_id_label.setText(method_node_id)
 

@@ -161,6 +161,34 @@ class MainWindow(QMainWindow):
         self.runner_dock.hide()
         self.runner_dock.visibilityChanged.connect(self._on_runner_dock_visibility)
 
+        # ── Floating Dock: Subscriptions ──────────────────────────────────────
+        from app.widgets.subscriptions_panel import SubscriptionsPanel
+        self.subs_panel = SubscriptionsPanel()
+        self.subs_panel.unsubscribe_requested.connect(self._on_unsubscribe_requested)
+        self.subs_panel.clear_btn.clicked.connect(self._on_clear_subscriptions)
+
+        self.subs_dock = QDockWidget("📡  Subscriptions", self)
+        self.subs_dock.setWidget(self.subs_panel)
+        self.subs_dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea |
+            Qt.DockWidgetArea.RightDockWidgetArea |
+            Qt.DockWidgetArea.BottomDockWidgetArea |
+            Qt.DockWidgetArea.NoDockWidgetArea
+        )
+        self.subs_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+        )
+        self.subs_dock.setFloating(True)
+        self.subs_dock.resize(480, 300)
+        self.subs_dock.move(
+            self.x() + self.width() - 520,
+            self.y() + 400
+        )
+        self.subs_dock.hide()
+        self.subs_dock.visibilityChanged.connect(self._on_subs_dock_visibility)
+
         # Status bar
         self.statusBar().showMessage("Ready — No active connections")
 
@@ -206,6 +234,8 @@ class MainWindow(QMainWindow):
             self.fav_dock.setStyleSheet(dock_title_style)
         if hasattr(self, 'runner_dock'):
             self.runner_dock.setStyleSheet(dock_title_style)
+        if hasattr(self, 'subs_dock'):
+            self.subs_dock.setStyleSheet(dock_title_style)
 
         self.add_tab_btn.setStyleSheet(f"""
             QPushButton {{
@@ -308,14 +338,16 @@ class MainWindow(QMainWindow):
         self.script_runner_btn.toggled.connect(self._toggle_script_runner)
         self.toolbar.addWidget(self.script_runner_btn)
 
-        # Theme Toggle
-        self.theme_btn = QToolButton()
-        self.theme_btn.setText("☀️ Light Mode" if theme_manager.current_mode == "dark" else "🌙 Dark Mode")
-        self.theme_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self.theme_btn.clicked.connect(self._toggle_theme)
-        self.toolbar.addWidget(self.theme_btn)
+        # Subscriptions toggle
+        self.subs_btn = QToolButton()
+        self.subs_btn.setText("📡 Subscriptions")
+        self.subs_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.subs_btn.setCheckable(True)
+        self.subs_btn.setChecked(False)
+        self.subs_btn.toggled.connect(self._toggle_subscriptions)
+        self.toolbar.addWidget(self.subs_btn)
 
-        self.toolbar.addSeparator()
+
 
         # Import/Export
         import_btn = QToolButton()
@@ -387,6 +419,9 @@ class MainWindow(QMainWindow):
             lambda u, s: self.server_panel.update_server_status(u, s)
         )
         client.error_occurred.connect(self._on_error)
+        client.data_changed.connect(
+            lambda nid, nname, val, s=server_info.name: self.subs_panel.add_or_update_item(s, nid, nname, val)
+        )
 
         success = await client.connect(
             url,
@@ -489,6 +524,36 @@ class MainWindow(QMainWindow):
         else:
             self.runner_dock.hide()
 
+    def _on_subs_dock_visibility(self, visible: bool):
+        self.subs_btn.blockSignals(True)
+        self.subs_btn.setChecked(visible)
+        self.subs_btn.blockSignals(False)
+
+    def _toggle_subscriptions(self, checked: bool):
+        if checked:
+            self.subs_dock.show()
+            self.subs_dock.raise_()
+        else:
+            self.subs_dock.hide()
+
+    def _on_unsubscribe_requested(self, server_name: str, node_id: str):
+        # Find the client for this server
+        for url, tab in self._tabs.items():
+            if tab.server_name == server_name:
+                import asyncio
+                asyncio.ensure_future(tab.opcua_client.unsubscribe_node(node_id))
+                self.subs_panel.remove_item(server_name, node_id)
+                break
+
+    def _on_clear_subscriptions(self):
+        import asyncio
+        for url, tab in self._tabs.items():
+            # We can just unsubscribe all from the panel's list for this server
+            for (s_name, n_id) in list(self.subs_panel._items.keys()):
+                if s_name == tab.server_name:
+                    asyncio.ensure_future(tab.opcua_client.unsubscribe_node(n_id))
+                    self.subs_panel.remove_item(s_name, n_id)
+
     def _on_runner_dock_visibility(self, visible: bool):
         """Keep toolbar button in sync when dock is closed via its X button."""
         self.script_runner_btn.blockSignals(True)
@@ -502,6 +567,7 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self._settings = dialog.get_settings()
             self._save_settings()
+            theme_manager.apply_theme(self._settings.get("theme", "dark"))
             self.statusBar().showMessage("Settings saved")
 
     def _on_export_config(self):
@@ -714,15 +780,6 @@ class MainWindow(QMainWindow):
                 json.dump(self._settings, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save settings: {e}")
-
-    def _toggle_theme(self):
-        """Toggle between light and dark themes."""
-        new_theme = "light" if theme_manager.current_mode == "dark" else "dark"
-        theme_manager.apply_theme(new_theme)
-        
-        # Save preference
-        self._settings["theme"] = new_theme
-        self._save_settings()
 
     def _load_settings(self):
         try:
