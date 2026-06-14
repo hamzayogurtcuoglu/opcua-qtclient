@@ -21,6 +21,7 @@ class FavoriteCard(QFrame):
 
     clicked = pyqtSignal(FavoriteItem)
     remove_requested = pyqtSignal(FavoriteItem)
+    rename_requested = pyqtSignal(FavoriteItem)
 
     def __init__(self, item: FavoriteItem, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -61,7 +62,8 @@ class FavoriteCard(QFrame):
         name_row.addWidget(name_label)
 
         # Type badge
-        badge = QLabel(self.fav_item.node_type.value)
+        badge_text = self.fav_item.node_type.value
+        badge = QLabel(badge_text)
         if self.fav_item.node_type == NodeType.VARIABLE:
             badge.setStyleSheet(f"""
                 background-color: {Colors.BADGE_VARIABLE};
@@ -75,6 +77,15 @@ class FavoriteCard(QFrame):
             badge.setStyleSheet(f"""
                 background-color: {Colors.BADGE_METHOD};
                 color: {Colors.BADGE_METHOD_TEXT};
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 9px;
+                font-weight: bold;
+            """)
+        elif self.fav_item.node_type == NodeType.SCRIPT:
+            badge.setStyleSheet(f"""
+                background-color: #1a3a2a;
+                color: #4ade80;
                 border-radius: 4px;
                 padding: 2px 6px;
                 font-size: 9px;
@@ -142,16 +153,26 @@ class FavoriteCard(QFrame):
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-        
+
         # Load/Call action
-        action_text = "▶ Call Method" if self.fav_item.node_type == NodeType.METHOD else "👁 Load Node"
+        if self.fav_item.node_type == NodeType.METHOD:
+            action_text = "▶ Call Method"
+        elif self.fav_item.node_type == NodeType.SCRIPT:
+            action_text = "▶ Run Script"
+        else:
+            action_text = "👁 Load Node"
         load_action = menu.addAction(action_text)
-        
+
         menu.addSeparator()
-        
+
+        # Rename action
+        rename_action = menu.addAction("✏️ Rename")
+
+        menu.addSeparator()
+
         # Delete action
         delete_action = menu.addAction("🗑 Delete")
-        
+
         # Style the menu
         menu.setStyleSheet(f"""
             QMenu {{
@@ -167,10 +188,12 @@ class FavoriteCard(QFrame):
                 background-color: {Colors.BG_HOVER};
             }}
         """)
-        
+
         action = menu.exec(event.globalPos())
         if action == load_action:
             self.clicked.emit(self.fav_item)
+        elif action == rename_action:
+            self.rename_requested.emit(self.fav_item)
         elif action == delete_action:
             self.remove_requested.emit(self.fav_item)
 
@@ -266,6 +289,7 @@ class FavoritesPanel(QWidget):
         card = FavoriteCard(item)
         card.clicked.connect(self.favorite_clicked.emit)
         card.remove_requested.connect(self._remove_favorite)
+        card.rename_requested.connect(self._rename_favorite)
         self._cards.append(card)
         self.list_layout.insertWidget(self.list_layout.count() - 1, card)
 
@@ -275,6 +299,53 @@ class FavoritesPanel(QWidget):
                 self._cards.remove(card)
                 card.deleteLater()
                 break
+        self._save_favorites()
+
+    def _rename_favorite(self, item: FavoriteItem):
+        """Show rename dialog and update the card."""
+        from PyQt6.QtWidgets import QInputDialog
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Favorite",
+            "Enter a new name:",
+            text=item.display_name,
+        )
+        if ok and new_name.strip():
+            item.display_name = new_name.strip()
+            # Rebuild the card
+            for card in self._cards:
+                if card.fav_item.node_id == item.node_id:
+                    pos = self.list_layout.indexOf(card)
+                    self._cards.remove(card)
+                    card.deleteLater()
+                    new_card = FavoriteCard(item)
+                    new_card.clicked.connect(self.favorite_clicked.emit)
+                    new_card.remove_requested.connect(self._remove_favorite)
+                    new_card.rename_requested.connect(self._rename_favorite)
+                    self._cards.insert(
+                        next((i for i, c in enumerate(self._cards)
+                              if self.list_layout.indexOf(c) > pos), len(self._cards)),
+                        new_card
+                    )
+                    self.list_layout.insertWidget(pos, new_card)
+                    break
+            self._save_favorites()
+
+    def add_script_favorite(self, script_path: str, display_name: str, args: list = None):
+        """Add a Python script to favorites."""
+        # Use path as unique node_id
+        for card in self._cards:
+            if card.fav_item.node_id == script_path:
+                return
+        item = FavoriteItem(
+            display_name=display_name,
+            node_id=script_path,
+            node_type=NodeType.SCRIPT,
+            server_url="",
+            server_name="",
+            input_args=args or [],
+        )
+        self._add_card(item)
         self._save_favorites()
 
     def _save_favorites(self):

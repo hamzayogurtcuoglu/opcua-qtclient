@@ -23,6 +23,7 @@ from app.theme import Colors
 from app.widgets.server_panel import ServerPanel
 from app.widgets.connection_tab import ConnectionTab
 from app.widgets.favorites_panel import FavoritesPanel
+from app.widgets.script_runner import ScriptRunnerPanel
 from app.dialogs.add_server_dialog import AddServerDialog
 from app.dialogs.discovery_dialog import DiscoveryDialog
 from app.dialogs.settings_dialog import SettingsDialog
@@ -122,8 +123,16 @@ class MainWindow(QMainWindow):
         self.favorites_panel.favorite_clicked.connect(self._on_favorite_clicked)
         self.main_splitter.addWidget(self.favorites_panel)
 
+        # Far right: Script Runner panel (hidden by default)
+        self.script_runner_panel = ScriptRunnerPanel()
+        self.script_runner_panel.hide()
+        self.script_runner_panel.add_to_favorites.connect(
+            lambda path, name, args: self.favorites_panel.add_script_favorite(path, name, args)
+        )
+        self.main_splitter.addWidget(self.script_runner_panel)
+
         # Set initial proportions
-        self.main_splitter.setSizes([260, 800, 260])
+        self.main_splitter.setSizes([260, 800, 260, 0])
         
         content_layout.addWidget(self.main_splitter)
         main_layout.addWidget(content_widget)
@@ -197,6 +206,15 @@ class MainWindow(QMainWindow):
         fav_btn.setChecked(True)
         fav_btn.toggled.connect(self._toggle_favorites)
         toolbar.addWidget(fav_btn)
+
+        # Script Runner toggle
+        self.script_runner_btn = QToolButton()
+        self.script_runner_btn.setText("▶ Script Runner")
+        self.script_runner_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.script_runner_btn.setCheckable(True)
+        self.script_runner_btn.setChecked(False)
+        self.script_runner_btn.toggled.connect(self._toggle_script_runner)
+        toolbar.addWidget(self.script_runner_btn)
 
         # Settings
         settings_btn = QToolButton()
@@ -338,6 +356,24 @@ class MainWindow(QMainWindow):
     def _toggle_favorites(self, visible: bool):
         """Toggle favorites panel visibility."""
         self.favorites_panel.setVisible(visible)
+
+    def _toggle_script_runner(self, visible: bool):
+        """Toggle Script Runner panel visibility."""
+        self.script_runner_panel.setVisible(visible)
+        if visible:
+            sizes = self.main_splitter.sizes()
+            # Give script runner 320px, reduce center tab width accordingly
+            total = sum(sizes)
+            runner_width = 320
+            sizes[-1] = runner_width
+            if sizes[1] > runner_width:
+                sizes[1] -= runner_width
+            self.main_splitter.setSizes(sizes)
+        else:
+            sizes = self.main_splitter.sizes()
+            sizes[1] += sizes[-1]
+            sizes[-1] = 0
+            self.main_splitter.setSizes(sizes)
 
     def _on_settings(self):
         """Show settings dialog."""

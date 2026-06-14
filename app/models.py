@@ -24,6 +24,7 @@ class NodeType(Enum):
     VARIABLE_TYPE = "VariableType"
     REFERENCE_TYPE = "ReferenceType"
     DATA_TYPE = "DataType"
+    SCRIPT = "Script"
     UNKNOWN = "Unknown"
 
 
@@ -113,10 +114,14 @@ class FavoriteItem:
 
     @classmethod
     def from_dict(cls, data: dict) -> "FavoriteItem":
+        try:
+            node_type = NodeType(data.get("node_type", "Unknown"))
+        except ValueError:
+            node_type = NodeType.UNKNOWN
         return cls(
             display_name=data.get("display_name", ""),
             node_id=data.get("node_id", ""),
-            node_type=NodeType(data.get("node_type", "Unknown")),
+            node_type=node_type,
             server_url=data.get("server_url", ""),
             server_name=data.get("server_name", ""),
             input_args=data.get("input_args", []),
