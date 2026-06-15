@@ -553,6 +553,25 @@ class OpcUaClient(QObject):
 
                 input_args = []
                 output_args = []
+                # Cache resolved custom-type names so we don't read the same
+                # DataType node twice for repeated argument types.
+                type_name_cache: dict = {}
+
+                async def build_arg(arg, index: int, prefix: str) -> MethodArgument:
+                    data_type = await self._resolve_data_type_name(arg.DataType, type_name_cache)
+                    # Some servers ship arguments with empty Name fields. Fall
+                    # back to the description, then to a generated label so the
+                    # user always sees a meaningful column instead of a blank.
+                    name = (arg.Name or "").strip()
+                    if not name and arg.Description and arg.Description.Text:
+                        name = arg.Description.Text.strip()
+                    if not name:
+                        name = f"{prefix}{index + 1}"
+                    return MethodArgument(
+                        name=name,
+                        data_type=data_type,
+                        description=arg.Description.Text if arg.Description and arg.Description.Text else "",
+                    )
 
                 for child in children:
                     browse_name = await child.read_browse_name()
@@ -561,22 +580,14 @@ class OpcUaClient(QObject):
                     if name == "InputArguments":
                         args = await child.read_value()
                         if args:
-                            for arg in args:
-                                input_args.append(MethodArgument(
-                                    name=arg.Name,
-                                    data_type=self._variant_type_name(arg.DataType),
-                                    description=arg.Description.Text if arg.Description and arg.Description.Text else "",
-                                ))
+                            for i, arg in enumerate(args):
+                                input_args.append(await build_arg(arg, i, "Input"))
 
                     elif name == "OutputArguments":
                         args = await child.read_value()
                         if args:
-                            for arg in args:
-                                output_args.append(MethodArgument(
-                                    name=arg.Name,
-                                    data_type=self._variant_type_name(arg.DataType),
-                                    description=arg.Description.Text if arg.Description and arg.Description.Text else "",
-                                ))
+                            for i, arg in enumerate(args):
+                                output_args.append(await build_arg(arg, i, "Output"))
 
             return input_args, output_args
 
@@ -585,25 +596,102 @@ class OpcUaClient(QObject):
             self._mark_transport_error(e)
             return [], []
 
+    # Built-in OPC UA DataType NodeId -> friendly name map.
+    _BUILTIN_TYPE_NAMES = {
+        ua.ObjectIds.Boolean: "Boolean",
+        ua.ObjectIds.SByte: "SByte",
+        ua.ObjectIds.Byte: "Byte",
+        ua.ObjectIds.Int16: "Int16",
+        ua.ObjectIds.UInt16: "UInt16",
+        ua.ObjectIds.Int32: "Int32",
+        ua.ObjectIds.UInt32: "UInt32",
+        ua.ObjectIds.Int64: "Int64",
+        ua.ObjectIds.UInt64: "UInt64",
+        ua.ObjectIds.Float: "Float",
+        ua.ObjectIds.Double: "Double",
+        ua.ObjectIds.String: "String",
+        ua.ObjectIds.DateTime: "DateTime",
+        ua.ObjectIds.Guid: "Guid",
+        ua.ObjectIds.ByteString: "ByteString",
+        ua.ObjectIds.XmlElement: "XmlElement",
+        ua.ObjectIds.NodeId: "NodeId",
+        ua.ObjectIds.ExpandedNodeId: "ExpandedNodeId",
+        ua.ObjectIds.StatusCode: "StatusCode",
+        ua.ObjectIds.QualifiedName: "QualifiedName",
+        ua.ObjectIds.LocalizedText: "LocalizedText",
+        ua.ObjectIds.Structure: "Structure",
+        ua.ObjectIds.DataValue: "DataValue",
+        ua.ObjectIds.BaseDataType: "Variant",
+        ua.ObjectIds.Number: "Number",
+        ua.ObjectIds.Integer: "Integer",
+        ua.ObjectIds.UInteger: "UInteger",
+        ua.ObjectIds.Enumeration: "Enumeration",
+        ua.ObjectIds.Duration: "Duration",
+        ua.ObjectIds.UtcTime: "UtcTime",
+    }
+
+    async def _resolve_data_type_name(self, data_type_id, cache: dict = None) -> str:
+        """Return a friendly type name for a DataType NodeId.
+
+        Standard built-in types resolve from a static map. For custom types
+        (enums/structures defined in a server namespace) we read the DataType
+        node's BrowseName so the user sees e.g. ``ServiceModeEnum`` instead of
+        ``NodeId(Identifier=3, NamespaceIndex=2, ...)``.
+        """
+        if data_type_id is None:
+            return "Variant"
+
+        # Standard namespace-0 built-ins.
+        if getattr(data_type_id, "NamespaceIndex", None) == 0:
+            ident = getattr(data_type_id, "Identifier", None)
+            builtin = self._BUILTIN_TYPE_NAMES.get(ident)
+            if builtin:
+                return builtin
+
+        if cache is not None and data_type_id in cache:
+            return cache[data_type_id]
+
+        name = None
+        try:
+            type_node = self._get_node(data_type_id)
+            browse_name = await type_node.read_browse_name()
+            if browse_name and browse_name.Name:
+                name = browse_name.Name
+        except Exception:
+            name = None
+
+        if not name:
+            # Last resort: a compact, readable NodeId form.
+            name = self._compact_nodeid(data_type_id)
+
+        if cache is not None:
+            cache[data_type_id] = name
+        return name
+
+    @staticmethod
+    def _compact_nodeid(node_id) -> str:
+        """Format a NodeId as the compact ``ns=..;i=..`` style string."""
+        try:
+            ns = getattr(node_id, "NamespaceIndex", 0)
+            ident = getattr(node_id, "Identifier", node_id)
+            id_type = getattr(node_id, "NodeIdType", None)
+            id_name = getattr(id_type, "name", "")
+            prefix = {"Numeric": "i", "String": "s", "Guid": "g", "ByteString": "b"}.get(id_name, "i")
+            if ns:
+                return f"ns={ns};{prefix}={ident}"
+            return f"{prefix}={ident}"
+        except Exception:
+            return str(node_id)
+
     def _variant_type_name(self, data_type_id) -> str:
-        """Convert a DataType NodeId to a human-readable type name."""
-        type_map = {
-            ua.NodeId(ua.ObjectIds.Boolean): "Boolean",
-            ua.NodeId(ua.ObjectIds.SByte): "SByte",
-            ua.NodeId(ua.ObjectIds.Byte): "Byte",
-            ua.NodeId(ua.ObjectIds.Int16): "Int16",
-            ua.NodeId(ua.ObjectIds.UInt16): "UInt16",
-            ua.NodeId(ua.ObjectIds.Int32): "Int32",
-            ua.NodeId(ua.ObjectIds.UInt32): "UInt32",
-            ua.NodeId(ua.ObjectIds.Int64): "Int64",
-            ua.NodeId(ua.ObjectIds.UInt64): "UInt64",
-            ua.NodeId(ua.ObjectIds.Float): "Float",
-            ua.NodeId(ua.ObjectIds.Double): "Double",
-            ua.NodeId(ua.ObjectIds.String): "String",
-            ua.NodeId(ua.ObjectIds.DateTime): "DateTime",
-            ua.NodeId(ua.ObjectIds.ByteString): "ByteString",
-        }
-        return type_map.get(data_type_id, str(data_type_id))
+        """Synchronous friendly type name for a DataType NodeId (built-ins)."""
+        if data_type_id is None:
+            return "Variant"
+        if getattr(data_type_id, "NamespaceIndex", None) == 0:
+            builtin = self._BUILTIN_TYPE_NAMES.get(getattr(data_type_id, "Identifier", None))
+            if builtin:
+                return builtin
+        return self._compact_nodeid(data_type_id)
 
     async def discover_servers(self, discovery_url: str = "opc.tcp://localhost:4840", timeout: float = 3.0) -> list[dict]:
         """Discover OPC UA servers using LDS."""

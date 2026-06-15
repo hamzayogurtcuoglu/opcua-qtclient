@@ -117,6 +117,9 @@ class ConnectionTab(QWidget):
 
         # Set proportions (40% tree, 60% details)
         self.content_splitter.setSizes([400, 600])
+        # Keep proportions when the window is resized.
+        self.content_splitter.setStretchFactor(0, 2)
+        self.content_splitter.setStretchFactor(1, 3)
 
         container_layout.addWidget(self.content_splitter, 1)
 

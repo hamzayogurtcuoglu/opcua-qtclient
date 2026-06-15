@@ -20,6 +20,7 @@ class FavoriteCard(QFrame):
     """A single favorite item card."""
 
     clicked = pyqtSignal(FavoriteItem)
+    execute_requested = pyqtSignal(FavoriteItem)
     remove_requested = pyqtSignal(FavoriteItem)
     rename_requested = pyqtSignal(FavoriteItem)
 
@@ -158,20 +159,29 @@ class FavoriteCard(QFrame):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            # Single click only loads/navigates — it never executes.
             self.clicked.emit(self.fav_item)
         super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Double click runs the method / script.
+            self.execute_requested.emit(self.fav_item)
+        super().mouseDoubleClickEvent(event)
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
 
-        # Load/Call action
-        if self.fav_item.node_type == NodeType.METHOD:
-            action_text = "▶ Call Method"
-        elif self.fav_item.node_type == NodeType.SCRIPT:
-            action_text = "▶ Run Script"
-        else:
-            action_text = "👁 Load Node"
-        load_action = menu.addAction(action_text)
+        runnable = self.fav_item.node_type in (NodeType.METHOD, NodeType.SCRIPT)
+
+        # Run/Call action (only for executable favorites)
+        run_action = None
+        if runnable:
+            run_text = "▶ Run Script" if self.fav_item.node_type == NodeType.SCRIPT else "▶ Call Method"
+            run_action = menu.addAction(run_text)
+
+        # Load/open action — never executes
+        load_action = menu.addAction("👁 Open / Load")
 
         menu.addSeparator()
 
@@ -186,7 +196,9 @@ class FavoriteCard(QFrame):
         menu.setStyleSheet(menu_stylesheet())
 
         action = menu.exec(event.globalPos())
-        if action == load_action:
+        if run_action is not None and action == run_action:
+            self.execute_requested.emit(self.fav_item)
+        elif action == load_action:
             self.clicked.emit(self.fav_item)
         elif action == rename_action:
             self.rename_requested.emit(self.fav_item)
@@ -198,6 +210,7 @@ class FavoritesPanel(QWidget):
     """Right sidebar showing favorited OPC UA nodes."""
 
     favorite_clicked = pyqtSignal(FavoriteItem)
+    favorite_execute = pyqtSignal(FavoriteItem)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -207,7 +220,6 @@ class FavoritesPanel(QWidget):
 
     def _setup_ui(self):
         self.setMinimumWidth(220)
-        self.setMaximumWidth(300)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -321,6 +333,7 @@ class FavoritesPanel(QWidget):
     def _add_card(self, item: FavoriteItem):
         card = FavoriteCard(item)
         card.clicked.connect(self.favorite_clicked.emit)
+        card.execute_requested.connect(self.favorite_execute.emit)
         card.remove_requested.connect(self._remove_favorite)
         card.rename_requested.connect(self._rename_favorite)
         self._cards.append(card)
@@ -353,6 +366,7 @@ class FavoritesPanel(QWidget):
                     card.deleteLater()
                     new_card = FavoriteCard(item)
                     new_card.clicked.connect(self.favorite_clicked.emit)
+                    new_card.execute_requested.connect(self.favorite_execute.emit)
                     new_card.remove_requested.connect(self._remove_favorite)
                     new_card.rename_requested.connect(self._rename_favorite)
                     self._cards.insert(
@@ -395,32 +409,42 @@ class FavoritesPanel(QWidget):
     def _save_favorites(self):
         data = [card.fav_item.to_dict() for card in self._cards]
         try:
-            with open(FAVORITES_FILE, "w") as f:
+            with open(FAVORITES_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
         except Exception:
             pass
 
+    def save(self):
+        """Public hook to persist favorites (e.g. on app close)."""
+        self._save_favorites()
+
     def _load_favorites(self):
         try:
-            if os.path.exists(FAVORITES_FILE):
-                with open(FAVORITES_FILE, "r") as f:
-                    data = json.load(f)
-                needs_save = False
-                for item_data in data:
-                    item = FavoriteItem.from_dict(item_data)
-                    # Upgrade old script favorites
-                    if item.node_type == NodeType.SCRIPT and not item.script_content:
-                        import os
-                        if os.path.exists(item.node_id):
-                            try:
-                                with open(item.node_id, "r", encoding="utf-8") as f:
-                                    item.script_content = f.read()
-                                item.node_id = os.path.basename(item.node_id)
-                                needs_save = True
-                            except Exception:
-                                pass
-                    self._add_card(item)
-                if needs_save:
-                    self._save_favorites()
+            if not os.path.exists(FAVORITES_FILE):
+                return
+            with open(FAVORITES_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
         except Exception:
-            pass
+            return
+
+        needs_save = False
+        for item_data in data:
+            # Load each favorite independently so one bad/legacy entry can't
+            # wipe the whole list on startup.
+            try:
+                item = FavoriteItem.from_dict(item_data)
+                # Upgrade old script favorites
+                if item.node_type == NodeType.SCRIPT and not item.script_content:
+                    if os.path.exists(item.node_id):
+                        try:
+                            with open(item.node_id, "r", encoding="utf-8") as sf:
+                                item.script_content = sf.read()
+                            item.node_id = os.path.basename(item.node_id)
+                            needs_save = True
+                        except Exception:
+                            pass
+                self._add_card(item)
+            except Exception:
+                continue
+        if needs_save:
+            self._save_favorites()

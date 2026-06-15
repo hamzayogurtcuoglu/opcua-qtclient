@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QToolBar, QToolButton, QSplitter, QTabWidget,
     QStatusBar, QLabel, QPushButton, QMessageBox,
     QApplication, QDockWidget, QSizePolicy, QFileDialog,
+    QStackedWidget,
 )
 
 from app.models import (
@@ -75,7 +76,7 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(10, 10, 10, 10)
         content_layout.setSpacing(8)
 
-        # Central split view: Servers | Tabs
+        # Central split view: Servers/Favorites | Tabs
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setChildrenCollapsible(False)
 
@@ -86,7 +87,15 @@ class MainWindow(QMainWindow):
         self.server_panel.server_clicked.connect(self._on_server_clicked)
         self.server_panel.server_edit_requested.connect(self._on_edit_server)
         self.server_panel.add_server_requested.connect(self._on_add_server)
-        self.main_splitter.addWidget(self.server_panel)
+
+        # Favorites now live in the same left sidebar, toggled via a segmented
+        # control, instead of a floating dock.
+        self.favorites_panel = FavoritesPanel()
+        self.favorites_panel.favorite_clicked.connect(self._on_favorite_clicked)
+        self.favorites_panel.favorite_execute.connect(self._on_favorite_execute)
+
+        self.left_sidebar = self._build_left_sidebar()
+        self.main_splitter.addWidget(self.left_sidebar)
 
         # Center: Tabs (Address spaces)
         self.tab_widget = QTabWidget()
@@ -103,36 +112,14 @@ class MainWindow(QMainWindow):
         self.tab_widget.setCornerWidget(self.add_tab_btn, Qt.Corner.TopRightCorner)
 
         self.main_splitter.addWidget(self.tab_widget)
-        self.main_splitter.setSizes([260, 900])
+        self.main_splitter.setSizes([280, 1000])
+        # Keep the left sidebar slim and let the address space take the space
+        # proportionally when the window is resized.
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 1)
 
         content_layout.addWidget(self.main_splitter)
         main_layout.addWidget(content_widget)
-
-        # ── Floating Dock: Favorites ──────────────────────────────────────────
-        self.favorites_panel = FavoritesPanel()
-        self.favorites_panel.favorite_clicked.connect(self._on_favorite_clicked)
-
-        self.fav_dock = QDockWidget("★ Favorites", self)
-        self.fav_dock.setWidget(self.favorites_panel)
-        self.fav_dock.setAllowedAreas(
-            Qt.DockWidgetArea.LeftDockWidgetArea |
-            Qt.DockWidgetArea.RightDockWidgetArea |
-            Qt.DockWidgetArea.NoDockWidgetArea
-        )
-        self.fav_dock.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetMovable |
-            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
-            QDockWidget.DockWidgetFeature.DockWidgetClosable
-        )
-        self.fav_dock.setFloating(True)
-        self.fav_dock.resize(280, 500)
-        # Position top-right relative to window
-        self.fav_dock.move(
-            self.x() + self.width() - 310,
-            self.y() + 80
-        )
-        self.fav_dock.hide()
-        self.fav_dock.visibilityChanged.connect(self._on_fav_dock_visibility)
 
         # ── Floating Dock: Script Runner ──────────────────────────────────────
         self.script_runner_panel = ScriptRunnerPanel()
@@ -196,6 +183,91 @@ class MainWindow(QMainWindow):
         # Initial style setup
         self.update_theme()
 
+    def _build_left_sidebar(self) -> QWidget:
+        """Build the left sidebar: a Servers/Favorites toggle over a stack."""
+        container = QWidget()
+        container.setMinimumWidth(240)
+        v = QVBoxLayout(container)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(8)
+
+        # Segmented toggle
+        toggle_row = QHBoxLayout()
+        toggle_row.setSpacing(0)
+        self.sidebar_servers_btn = QPushButton("🖧  Servers")
+        self.sidebar_favorites_btn = QPushButton("★  Favorites")
+        for btn in (self.sidebar_servers_btn, self.sidebar_favorites_btn):
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.sidebar_servers_btn.setChecked(True)
+        self.sidebar_servers_btn.clicked.connect(lambda: self._show_sidebar_view(0))
+        self.sidebar_favorites_btn.clicked.connect(lambda: self._show_sidebar_view(1))
+        toggle_row.addWidget(self.sidebar_servers_btn)
+        toggle_row.addWidget(self.sidebar_favorites_btn)
+        v.addLayout(toggle_row)
+
+        # Stack
+        self.left_stack = QStackedWidget()
+        self.left_stack.addWidget(self.server_panel)     # index 0
+        self.left_stack.addWidget(self.favorites_panel)  # index 1
+        v.addWidget(self.left_stack, 1)
+
+        return container
+
+    def _show_sidebar_view(self, index: int):
+        """Switch the left sidebar between Servers (0) and Favorites (1)."""
+        self.left_stack.setCurrentIndex(index)
+        self.sidebar_servers_btn.setChecked(index == 0)
+        self.sidebar_favorites_btn.setChecked(index == 1)
+        # Keep the toolbar Favorites button in sync.
+        if hasattr(self, "fav_btn"):
+            self.fav_btn.blockSignals(True)
+            self.fav_btn.setChecked(index == 1)
+            self.fav_btn.blockSignals(False)
+        self._style_sidebar_toggle()
+
+    def _style_sidebar_toggle(self):
+        """Apply themed styling to the Servers/Favorites segmented control."""
+        def style_for(active: bool) -> str:
+            if active:
+                return f"""
+                    QPushButton {{
+                        background-color: {Colors.ACCENT};
+                        color: #ffffff;
+                        border: 1px solid {Colors.ACCENT};
+                        padding: 9px 10px;
+                        font-size: 13px;
+                        font-weight: 700;
+                    }}
+                """
+            return f"""
+                QPushButton {{
+                    background-color: {Colors.BG_CARD};
+                    color: {Colors.TEXT_SECONDARY};
+                    border: 1px solid {Colors.BORDER};
+                    padding: 9px 10px;
+                    font-size: 13px;
+                    font-weight: 600;
+                }}
+                QPushButton:hover {{
+                    color: {Colors.TEXT_PRIMARY};
+                    background-color: {Colors.BG_HOVER};
+                }}
+            """
+        # Rounded outer corners only, to look like one segmented control.
+        servers_active = self.sidebar_servers_btn.isChecked()
+        self.sidebar_servers_btn.setStyleSheet(
+            style_for(servers_active).replace(
+                "QPushButton {", "QPushButton { border-top-left-radius: 9px; border-bottom-left-radius: 9px; border-right: none;", 1
+            )
+        )
+        self.sidebar_favorites_btn.setStyleSheet(
+            style_for(not servers_active).replace(
+                "QPushButton {", "QPushButton { border-top-right-radius: 9px; border-bottom-right-radius: 9px;", 1
+            )
+        )
+
     def update_theme(self):
         """Update inline styles when theme changes."""
         self.tab_widget.setStyleSheet(f"""
@@ -237,6 +309,9 @@ class MainWindow(QMainWindow):
             self.runner_dock.setStyleSheet(dock_title_style)
         if hasattr(self, 'subs_dock'):
             self.subs_dock.setStyleSheet(dock_title_style)
+
+        if hasattr(self, 'sidebar_servers_btn'):
+            self._style_sidebar_toggle()
 
         self.add_tab_btn.setStyleSheet(f"""
             QPushButton {{
@@ -549,19 +624,16 @@ class MainWindow(QMainWindow):
                 asyncio.ensure_future(tab.load_address_space())
         self.statusBar().showMessage("Refreshed all connections")
 
-    def _toggle_favorites(self, visible: bool):
-        """Toggle favorites pop-up dock."""
-        if visible:
-            self.fav_dock.show()
-            self.fav_dock.raise_()
-        else:
-            self.fav_dock.hide()
+    def _toggle_favorites(self, checked: bool):
+        """Toolbar Favorites button — switch the left sidebar view."""
+        self._show_sidebar_view(1 if checked else 0)
 
     def _on_fav_dock_visibility(self, visible: bool):
-        """Keep toolbar button in sync when dock is closed via its X button."""
-        self.fav_btn.blockSignals(True)
-        self.fav_btn.setChecked(visible)
-        self.fav_btn.blockSignals(False)
+        """Kept for backwards compatibility (favorites are now in the sidebar)."""
+        if hasattr(self, 'fav_btn'):
+            self.fav_btn.blockSignals(True)
+            self.fav_btn.setChecked(visible)
+            self.fav_btn.blockSignals(False)
 
     def _toggle_script_runner(self, visible: bool):
         """Toggle Script Runner pop-up dock."""
@@ -710,7 +782,17 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("All data has been wiped.")
 
     def _on_favorite_clicked(self, item: FavoriteItem):
-        """Navigate to a favorited node in its server's tree or load a script."""
+        """Single click on a favorite — load / navigate only (never executes)."""
+        if item.node_type == NodeType.SCRIPT:
+            self.script_runner_btn.setChecked(True)
+            self._toggle_script_runner(True)
+            self.script_runner_panel.load_script(item.node_id, item.input_args, item.script_content)
+            return
+
+        asyncio.ensure_future(self._activate_favorite(item, execute=False))
+
+    def _on_favorite_execute(self, item: FavoriteItem):
+        """Double click / right-click Run — load and then execute the favorite."""
         if item.node_type == NodeType.SCRIPT:
             self.script_runner_btn.setChecked(True)
             self._toggle_script_runner(True)
@@ -719,10 +801,10 @@ class MainWindow(QMainWindow):
                 self.script_runner_panel._on_run()
             return
 
-        asyncio.ensure_future(self._activate_favorite(item))
+        asyncio.ensure_future(self._activate_favorite(item, execute=True))
 
-    async def _activate_favorite(self, item: FavoriteItem):
-        """Ensure server connected and then call method / load node."""
+    async def _activate_favorite(self, item: FavoriteItem, execute: bool = False):
+        """Ensure server connected and then load (and optionally call) a node."""
         # 1. Find which tab to use
         tab = None
         if item.server_url and item.server_url in self._tabs:
@@ -788,8 +870,9 @@ class MainWindow(QMainWindow):
             if item.input_args:
                 tab.node_info.call_method_tab.populate_saved_args(item.input_args)
 
-            # 5. Call the method
-            tab.node_info.call_method_tab._on_call()
+            # 5. Call the method only when explicitly requested.
+            if execute:
+                tab.node_info.call_method_tab._on_call()
 
 
     def _on_error(self, operation: str, message: str):
@@ -847,4 +930,8 @@ class MainWindow(QMainWindow):
             asyncio.ensure_future(client.disconnect())
         self._save_servers()
         self._save_settings()
+        try:
+            self.favorites_panel.save()
+        except Exception:
+            pass
         event.accept()

@@ -9,11 +9,160 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget,
     QTableWidget, QTableWidgetItem, QPushButton, QLineEdit,
     QComboBox, QTextEdit, QFrame, QHeaderView, QSpinBox,
-    QFormLayout, QSizePolicy, QCheckBox
+    QFormLayout, QSizePolicy, QCheckBox, QDialog, QToolButton,
+    QPlainTextEdit, QDialogButtonBox,
 )
 
 from app.models import NodeInfo, NodeType, MethodArgument
 from app.theme import Colors, theme_manager
+
+
+def _pretty_value(text: str) -> str:
+    """Best-effort pretty formatting for long/structured values shown in popups."""
+    if text is None:
+        return ""
+    text = str(text)
+    stripped = text.strip()
+    # Try JSON first for dict/list-like content.
+    if stripped and stripped[0] in "[{":
+        try:
+            import json
+            return json.dumps(json.loads(stripped), indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+    # Try python literal (e.g. ExtensionObject repr / tuples).
+    if stripped and stripped[0] in "[{(":
+        try:
+            import ast
+            import pprint
+            return pprint.pformat(ast.literal_eval(stripped), indent=2, width=80)
+        except Exception:
+            pass
+    return text
+
+
+class ValueEditorDialog(QDialog):
+    """A roomy popup for viewing/editing a single long or structured value."""
+
+    def __init__(self, text: str = "", title: str = "Value",
+                 read_only: bool = False, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumSize(560, 360)
+        self._read_only = read_only
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        self.editor = QPlainTextEdit()
+        self.editor.setPlainText(_pretty_value(text) if read_only else str(text or ""))
+        self.editor.setReadOnly(read_only)
+        layout.addWidget(self.editor, 1)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Close if read_only
+            else QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setStyleSheet(f"""
+            QDialog {{ background-color: {Colors.BG_DARK}; }}
+            QPlainTextEdit {{
+                background-color: {Colors.BG_INPUT};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 8px;
+                padding: 8px;
+                font-family: 'Menlo', 'Courier New', 'Courier';
+                font-size: 13px;
+                color: {Colors.TEXT_PRIMARY};
+            }}
+            QPushButton {{
+                background-color: {Colors.BG_CARD};
+                color: {Colors.TEXT_PRIMARY};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 6px;
+                padding: 6px 18px;
+            }}
+            QPushButton:hover {{ background-color: {Colors.BG_HOVER}; }}
+        """)
+
+    def value(self) -> str:
+        return self.editor.toPlainText()
+
+
+class ValueCell(QWidget):
+    """A table cell with an inline editor and a ``…`` button opening a popup.
+
+    Used for method input/output values so long or structured content (e.g.
+    extension objects, NodeIds, JSON) stays readable and editable.
+    """
+
+    def __init__(self, text: str = "", read_only: bool = False,
+                 title: str = "Value", parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._title = title
+        self._read_only = read_only
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(2, 0, 2, 0)
+        layout.setSpacing(2)
+
+        self.line = QLineEdit(str(text or ""))
+        self.line.setReadOnly(read_only)
+        self.line.setFrame(False)
+        layout.addWidget(self.line, 1)
+
+        self.expand_btn = QToolButton()
+        self.expand_btn.setText("…")
+        self.expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.expand_btn.setToolTip("Open editor" if not read_only else "View full value")
+        self.expand_btn.clicked.connect(self._open_popup)
+        layout.addWidget(self.expand_btn, 0)
+
+        self._apply_style()
+
+    def _apply_style(self):
+        self.line.setStyleSheet(f"""
+            QLineEdit {{
+                background: transparent;
+                border: none;
+                color: {Colors.TEXT_PRIMARY};
+                padding: 2px 4px;
+            }}
+        """)
+        self.expand_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {Colors.BG_SURFACE};
+                color: {Colors.ACCENT};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 4px;
+                font-weight: bold;
+                padding: 0 6px;
+                margin: 2px 0;
+            }}
+            QToolButton:hover {{
+                background-color: {Colors.ACCENT};
+                color: #ffffff;
+            }}
+        """)
+
+    def _open_popup(self):
+        dlg = ValueEditorDialog(
+            self.line.text(), title=self._title,
+            read_only=self._read_only, parent=self,
+        )
+        if dlg.exec() and not self._read_only:
+            self.line.setText(dlg.value())
+
+    def text(self) -> str:
+        return self.line.text()
+
+    def setText(self, text: str):
+        self.line.setText(str(text or ""))
+
 
 
 class PropertiesTab(QWidget):
@@ -522,11 +671,12 @@ class CallMethodTab(QWidget):
         self.output_table.verticalHeader().setVisible(False)
         self.output_table.verticalHeader().setDefaultSectionSize(36)
         self.output_table.setMinimumHeight(120)
-        self.output_table.setMaximumHeight(200)
-        
-        layout.addWidget(self.output_table)
+        self.output_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
 
-        layout.addStretch()
+        # Output grows to fill available vertical space when the window resizes.
+        layout.addWidget(self.output_table, 1)
 
         self.update_theme()
         theme_manager.theme_changed.connect(self.update_theme)
@@ -568,16 +718,10 @@ class CallMethodTab(QWidget):
         # But wait, we can just call `_populate_params` with existing args.
         if self._input_args:
             # Re-populating will reset user's typed values, so let's save them first.
-            saved_vals = []
-            for i in range(self.params_table.rowCount()):
-                val_widget = self.params_table.cellWidget(i, 3)
-                if isinstance(val_widget, QLineEdit):
-                    saved_vals.append(val_widget.text())
-                elif isinstance(val_widget, QComboBox):
-                    saved_vals.append(val_widget.currentText())
-                else:
-                    val_item = self.params_table.item(i, 3)
-                    saved_vals.append(val_item.text() if val_item else "")
+            saved_vals = [
+                self._read_cell(self.params_table, i)
+                for i in range(self.params_table.rowCount())
+            ]
 
             if hasattr(self, '_method_node_id'):
                 self.set_method(
@@ -588,21 +732,44 @@ class CallMethodTab(QWidget):
                     getattr(self, '_output_args', []),
                 )
             for i in range(min(len(saved_vals), self.params_table.rowCount())):
-                val_widget = self.params_table.cellWidget(i, 3)
-                if isinstance(val_widget, QLineEdit):
-                    val_widget.setText(saved_vals[i])
-                elif isinstance(val_widget, QComboBox):
-                    idx = val_widget.findText(saved_vals[i])
-                    if idx >= 0:
-                        val_widget.setCurrentIndex(idx)
-                else:
-                    val_item = self.params_table.item(i, 3)
-                    if val_item:
-                        val_item.setText(saved_vals[i])
+                self._write_cell(self.params_table, i, saved_vals[i])
+
 
     def set_client(self, client, server_name: str = ""):
         self._opcua_client = client
         self._server_name = server_name
+
+    @staticmethod
+    def _read_cell(table, row) -> str:
+        """Read a value-column cell regardless of the widget type used."""
+        w = table.cellWidget(row, 3)
+        if isinstance(w, QComboBox):
+            return w.currentText()
+        if isinstance(w, ValueCell):
+            return w.text()
+        item = table.item(row, 3)
+        return item.text() if item else ""
+
+    @staticmethod
+    def _write_cell(table, row, text):
+        """Write a value-column cell regardless of the widget type used."""
+        text = str(text if text is not None else "")
+        w = table.cellWidget(row, 3)
+        if isinstance(w, QComboBox):
+            idx = w.findText(text)
+            if idx >= 0:
+                w.setCurrentIndex(idx)
+            elif text:
+                w.setCurrentText(text)
+            return
+        if isinstance(w, ValueCell):
+            w.setText(text)
+            return
+        item = table.item(row, 3)
+        if item:
+            item.setText(text)
+        else:
+            table.setItem(row, 3, QTableWidgetItem(text))
 
     def set_method(self, method_node_id: str, method_display_name: str, parent_node_id: str, input_args: list[MethodArgument], output_args: list[MethodArgument] = None):
         """Set the method to call and populate parameters."""
@@ -623,10 +790,10 @@ class CallMethodTab(QWidget):
             self.params_table.setItem(i, 1, QTableWidgetItem(arg.name))
             type_item = QTableWidgetItem(arg.data_type)
             type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            type_item.setToolTip(arg.data_type)
             self.params_table.setItem(i, 2, type_item)
-            
+
             if arg.data_type == "Boolean":
-                from PyQt6.QtWidgets import QComboBox
                 combo = QComboBox()
                 combo.addItems(["False", "True"])
                 combo.setStyleSheet(f"""
@@ -646,7 +813,13 @@ class CallMethodTab(QWidget):
                     combo.setCurrentText(str(arg.value).capitalize())
                 self.params_table.setCellWidget(i, 3, combo)
             else:
-                self.params_table.setItem(i, 3, QTableWidgetItem(str(arg.value or "")))
+                cell = ValueCell(
+                    str(arg.value or ""),
+                    read_only=False,
+                    title=f"Input — {arg.name} ({arg.data_type})",
+                )
+                self.params_table.setCellWidget(i, 3, cell)
+
 
         # Make Input # and Name non-editable
         for i in range(len(input_args)):
@@ -662,46 +835,38 @@ class CallMethodTab(QWidget):
             self.output_table.setItem(i, 1, QTableWidgetItem(arg.name))
             type_item = QTableWidgetItem(arg.data_type)
             type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            type_item.setToolTip(arg.data_type)
             self.output_table.setItem(i, 2, type_item)
-            self.output_table.setItem(i, 3, QTableWidgetItem(""))
-            
+
+            out_cell = ValueCell(
+                "", read_only=True,
+                title=f"Output — {arg.name} ({arg.data_type})",
+            )
+            self.output_table.setCellWidget(i, 3, out_cell)
+
             # Make Output #, Name, and Type non-editable
             for col in (0, 1, 2):
                 item = self.output_table.item(i, col)
                 if item:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            # Output value is also read-only
-            val_item = self.output_table.item(i, 3)
-            if val_item:
-                val_item.setFlags(val_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
 
     def populate_saved_args(self, args: list):
         """Restore saved arguments into the table."""
         for i, val in enumerate(args):
             if i < self.params_table.rowCount():
-                combo = self.params_table.cellWidget(i, 3)
-                if combo:
-                    combo.setCurrentText(str(val))
-                else:
-                    item = self.params_table.item(i, 3)
-                    if item:
-                        item.setText(str(val))
+                self._write_cell(self.params_table, i, val)
 
     def _on_favorite(self):
         if self._method_node_id:
             name = self._method_display_name or self._method_node_id
             
             # Gather current input args
-            saved_args = []
-            for i in range(self.params_table.rowCount()):
-                combo = self.params_table.cellWidget(i, 3)
-                if combo:
-                    saved_args.append(combo.currentText())
-                else:
-                    val_item = self.params_table.item(i, 3)
-                    if val_item:
-                        saved_args.append(val_item.text())
-            
+            saved_args = [
+                self._read_cell(self.params_table, i)
+                for i in range(self.params_table.rowCount())
+            ]
+
             self.add_to_favorites_requested.emit(
                 self._method_node_id, name, NodeType.METHOD, saved_args
             )
@@ -728,15 +893,7 @@ class CallMethodTab(QWidget):
                     continue
 
                 data_type = type_item.text()
-                combo = self.params_table.cellWidget(i, 3)
-
-                if combo:
-                    raw_val = combo.currentText()
-                else:
-                    val_item = self.params_table.item(i, 3)
-                    if not val_item:
-                        continue
-                    raw_val = val_item.text()
+                raw_val = self._read_cell(self.params_table, i)
 
                 try:
                     args.append(self._convert_arg(raw_val, data_type))
@@ -754,18 +911,11 @@ class CallMethodTab(QWidget):
 
                 for i, val in enumerate(result):
                     if i < self.output_table.rowCount():
-                        item = self.output_table.item(i, 3)
-                        if not item:
-                            item = QTableWidgetItem()
-                            self.output_table.setItem(i, 3, item)
-                        item.setText(str(val))
-                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                        self._write_cell(self.output_table, i, str(val))
                 self.method_called.emit(self._method_node_id, str(result))
             else:
                 for i in range(self.output_table.rowCount()):
-                    item = self.output_table.item(i, 3)
-                    if item:
-                        item.setText("")
+                    self._write_cell(self.output_table, i, "")
                 self.method_called.emit(self._method_node_id, "()")
         except Exception as exc:
             self.method_called.emit(self._method_node_id, f"Error: {exc}")
@@ -775,13 +925,11 @@ class CallMethodTab(QWidget):
 
     def _on_clear(self):
         for i in range(self.params_table.rowCount()):
-            item = self.params_table.item(i, 3)
-            if item:
-                item.setText("")
+            w = self.params_table.cellWidget(i, 3)
+            if isinstance(w, ValueCell):
+                w.setText("")
         for i in range(self.output_table.rowCount()):
-            item = self.output_table.item(i, 3)
-            if item:
-                item.setText("")
+            self._write_cell(self.output_table, i, "")
 
     def _convert_arg(self, raw: str, data_type: str) -> Any:
         converters = {
