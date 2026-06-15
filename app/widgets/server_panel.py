@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.models import ServerInfo, ConnectionStatus
-from app.theme import Colors, theme_manager
+from app.theme import Colors, menu_stylesheet, theme_manager
 
 
 class ServerCard(QFrame):
@@ -127,6 +127,7 @@ class ServerCard(QFrame):
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
+        menu.setStyleSheet(menu_stylesheet())
         if self.server_info.status == ConnectionStatus.CONNECTED:
             disconnect_action = menu.addAction("⚡ Disconnect")
             disconnect_action.triggered.connect(

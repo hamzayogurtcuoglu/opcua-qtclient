@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QPushButton, QHBoxLayout, QLabel
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from app.theme import Colors
+from app.theme import Colors, theme_manager
 from datetime import datetime
 
 class SubscriptionsPanel(QWidget):
@@ -17,6 +17,7 @@ class SubscriptionsPanel(QWidget):
         super().__init__(parent)
         self._setup_ui()
         self._items = {}  # (server_name, node_id) -> row_index
+        theme_manager.theme_changed.connect(self.update_theme)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -24,14 +25,12 @@ class SubscriptionsPanel(QWidget):
         layout.setSpacing(0)
 
         # Header
-        header = QWidget()
-        header.setStyleSheet(f"background-color: {Colors.BG_DARK}; border-bottom: 1px solid {Colors.BORDER};")
-        header_layout = QHBoxLayout(header)
+        self.header = QWidget()
+        header_layout = QHBoxLayout(self.header)
         header_layout.setContentsMargins(12, 12, 12, 12)
 
-        title = QLabel("📡 Active Subscriptions")
-        title.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {Colors.TEXT_PRIMARY};")
-        header_layout.addWidget(title)
+        self.title = QLabel("📡 Active Subscriptions")
+        header_layout.addWidget(self.title)
         
         header_layout.addStretch()
         
@@ -39,7 +38,7 @@ class SubscriptionsPanel(QWidget):
         self.clear_btn.setStyleSheet("padding: 4px 10px; font-size: 12px;")
         header_layout.addWidget(self.clear_btn)
         
-        layout.addWidget(header)
+        layout.addWidget(self.header)
 
         # Table
         self.table = QTableWidget(0, 5)
@@ -56,6 +55,36 @@ class SubscriptionsPanel(QWidget):
         self.table.setAlternatingRowColors(True)
 
         layout.addWidget(self.table)
+        self.update_theme()
+
+    def update_theme(self):
+        self.header.setStyleSheet(
+            f"background-color: {Colors.BG_DARK}; border-bottom: 1px solid {Colors.BORDER};"
+        )
+        self.title.setStyleSheet(
+            f"font-size: 14px; font-weight: bold; color: {Colors.TEXT_PRIMARY}; background: transparent;"
+        )
+        self.clear_btn.setStyleSheet(
+            f"padding: 4px 10px; font-size: 12px; color: {Colors.TEXT_PRIMARY};"
+        )
+        self.table.setStyleSheet(f"""
+            QTableWidget {{
+                background-color: {Colors.BG_CARD};
+                color: {Colors.TEXT_PRIMARY};
+                alternate-background-color: {Colors.BG_MEDIUM};
+                gridline-color: {Colors.BORDER};
+            }}
+        """)
+
+        for row in range(self.table.rowCount()):
+            button = self.table.cellWidget(row, 4)
+            if isinstance(button, QPushButton):
+                self._style_unsubscribe_button(button)
+
+    def _style_unsubscribe_button(self, button: QPushButton):
+        button.setStyleSheet(
+            f"background-color: {Colors.ERROR}; color: white; padding: 2px 6px; font-size: 11px;"
+        )
 
     def add_or_update_item(self, server_name: str, node_id: str, node_name: str, value: str):
         key = (server_name, node_id)
@@ -95,7 +124,7 @@ class SubscriptionsPanel(QWidget):
 
             # Unsubscribe button
             unsub_btn = QPushButton("Remove")
-            unsub_btn.setStyleSheet(f"background-color: {Colors.ERROR}; color: white; padding: 2px 6px; font-size: 11px;")
+            self._style_unsubscribe_button(unsub_btn)
             unsub_btn.clicked.connect(lambda _, s=server_name, n=node_id: self._on_unsubscribe_clicked(s, n))
             self.table.setCellWidget(row, 4, unsub_btn)
 

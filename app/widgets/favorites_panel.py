@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.models import FavoriteItem, NodeType
-from app.theme import Colors, theme_manager
+from app.theme import Colors, menu_stylesheet, theme_manager
 
 FAVORITES_FILE = os.path.join(os.path.expanduser("~"), ".opcua_client_favorites.json")
 
@@ -183,21 +183,7 @@ class FavoriteCard(QFrame):
         # Delete action
         delete_action = menu.addAction("🗑 Delete")
 
-        # Style the menu
-        menu.setStyleSheet(f"""
-            QMenu {{
-                background-color: {Colors.BG_CARD};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 4px;
-                color: {Colors.TEXT_PRIMARY};
-            }}
-            QMenu::item {{
-                padding: 6px 24px 6px 12px;
-            }}
-            QMenu::item:selected {{
-                background-color: {Colors.BG_HOVER};
-            }}
-        """)
+        menu.setStyleSheet(menu_stylesheet())
 
         action = menu.exec(event.globalPos())
         if action == load_action:

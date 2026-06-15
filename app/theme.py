@@ -215,6 +215,35 @@ class ThemeManager(QObject):
 theme_manager = ThemeManager()
 
 
+def menu_stylesheet() -> str:
+    """Return a menu stylesheet using the active palette."""
+    return f"""
+        QMenu {{
+            background-color: {Colors.BG_CARD};
+            color: {Colors.TEXT_PRIMARY};
+            border: 1px solid {Colors.BORDER};
+            border-radius: 8px;
+            padding: 4px;
+        }}
+        QMenu::item {{
+            padding: 6px 24px;
+            border-radius: 4px;
+        }}
+        QMenu::item:selected {{
+            background-color: {Colors.ACCENT};
+            color: white;
+        }}
+        QMenu::item:disabled {{
+            color: {Colors.TEXT_MUTED};
+        }}
+        QMenu::separator {{
+            height: 1px;
+            background-color: {Colors.BORDER};
+            margin: 4px 8px;
+        }}
+    """
+
+
 def get_stylesheet() -> str:
     """Return the complete application stylesheet."""
     return f"""
@@ -372,7 +401,7 @@ def get_stylesheet() -> str:
     }}
 
     QPushButton[class="danger"]:hover {{
-        background-color: #dc2626;
+        background-color: {Colors.ERROR};
     }}
 
     QPushButton[class="flat"] {{

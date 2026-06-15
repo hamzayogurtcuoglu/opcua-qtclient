@@ -150,7 +150,7 @@ class SettingsDialog(QDialog):
             idx = self.security_combo.findText(self._settings.get("default_security", "None"))
             if idx >= 0:
                 self.security_combo.setCurrentIndex(idx)
-            theme = self._settings.get("theme", "dark")
+            theme = self._settings.get("theme", "system")
             if theme == "system":
                 self.theme_combo.setCurrentText("System Mode")
             else:

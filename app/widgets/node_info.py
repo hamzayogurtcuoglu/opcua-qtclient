@@ -440,6 +440,7 @@ class CallMethodTab(QWidget):
         self._opcua_client = None
         self._server_name = ""
         self._input_args: list[MethodArgument] = []
+        self._call_task: Optional[asyncio.Task] = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -575,10 +576,17 @@ class CallMethodTab(QWidget):
                 elif isinstance(val_widget, QComboBox):
                     saved_vals.append(val_widget.currentText())
                 else:
-                    saved_vals.append("")
+                    val_item = self.params_table.item(i, 3)
+                    saved_vals.append(val_item.text() if val_item else "")
 
             if hasattr(self, '_method_node_id'):
-                self.set_method(self._method_node_id, self._method_display_name, self._parent_node_id, self._input_args, getattr(self, '_output_args', []))            # Restore values
+                self.set_method(
+                    self._method_node_id,
+                    self._method_display_name,
+                    self._parent_node_id,
+                    self._input_args,
+                    getattr(self, '_output_args', []),
+                )
             for i in range(min(len(saved_vals), self.params_table.rowCount())):
                 val_widget = self.params_table.cellWidget(i, 3)
                 if isinstance(val_widget, QLineEdit):
@@ -587,6 +595,10 @@ class CallMethodTab(QWidget):
                     idx = val_widget.findText(saved_vals[i])
                     if idx >= 0:
                         val_widget.setCurrentIndex(idx)
+                else:
+                    val_item = self.params_table.item(i, 3)
+                    if val_item:
+                        val_item.setText(saved_vals[i])
 
     def set_client(self, client, server_name: str = ""):
         self._opcua_client = client
@@ -695,61 +707,71 @@ class CallMethodTab(QWidget):
             )
 
     def _on_call(self):
-        if self._method_node_id and self._opcua_client:
-            asyncio.ensure_future(self._call_method())
+        if not self._method_node_id or not self._opcua_client:
+            return
+        if self._call_task and not self._call_task.done():
+            return
+        self._call_task = asyncio.ensure_future(self._call_method())
 
     async def _call_method(self):
         if not self._method_node_id or not self._opcua_client:
             return
 
-        # Gather args from table
-        args = []
-        for i in range(self.params_table.rowCount()):
-            type_item = self.params_table.item(i, 2)
-            if not type_item:
-                continue
-                
-            data_type = type_item.text()
-            combo = self.params_table.cellWidget(i, 3)
-            
-            if combo:
-                raw_val = combo.currentText()
-            else:
-                val_item = self.params_table.item(i, 3)
-                if not val_item:
+        self.call_btn.setEnabled(False)
+        self.call_btn.setText("Calling...")
+
+        try:
+            args = []
+            for i in range(self.params_table.rowCount()):
+                type_item = self.params_table.item(i, 2)
+                if not type_item:
                     continue
-                raw_val = val_item.text()
-                
-            try:
-                args.append(self._convert_arg(raw_val, data_type))
-            except Exception:
-                args.append(raw_val)
 
-        result = await self._opcua_client.call_method(
-            self._parent_node_id, self._method_node_id,
-            args, self._server_name
-        )
+                data_type = type_item.text()
+                combo = self.params_table.cellWidget(i, 3)
 
-        if result is not None:
-            # result could be a single value or a list of values
-            if not isinstance(result, (list, tuple)):
-                result = [result]
-                
-            for i, val in enumerate(result):
-                if i < self.output_table.rowCount():
+                if combo:
+                    raw_val = combo.currentText()
+                else:
+                    val_item = self.params_table.item(i, 3)
+                    if not val_item:
+                        continue
+                    raw_val = val_item.text()
+
+                try:
+                    args.append(self._convert_arg(raw_val, data_type))
+                except Exception:
+                    args.append(raw_val)
+
+            result = await self._opcua_client.call_method(
+                self._parent_node_id, self._method_node_id,
+                args, self._server_name
+            )
+
+            if result is not None:
+                if not isinstance(result, (list, tuple)):
+                    result = [result]
+
+                for i, val in enumerate(result):
+                    if i < self.output_table.rowCount():
+                        item = self.output_table.item(i, 3)
+                        if not item:
+                            item = QTableWidgetItem()
+                            self.output_table.setItem(i, 3, item)
+                        item.setText(str(val))
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.method_called.emit(self._method_node_id, str(result))
+            else:
+                for i in range(self.output_table.rowCount()):
                     item = self.output_table.item(i, 3)
-                    if not item:
-                        item = QTableWidgetItem()
-                        self.output_table.setItem(i, 3, item)
-                    item.setText(str(val))
-                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.method_called.emit(self._method_node_id, str(result))
-        else:
-            for i in range(self.output_table.rowCount()):
-                item = self.output_table.item(i, 3)
-                if item:
-                    item.setText("")
-            self.method_called.emit(self._method_node_id, "()")
+                    if item:
+                        item.setText("")
+                self.method_called.emit(self._method_node_id, "()")
+        except Exception as exc:
+            self.method_called.emit(self._method_node_id, f"Error: {exc}")
+        finally:
+            self.call_btn.setEnabled(True)
+            self.call_btn.setText("▶  Call")
 
     def _on_clear(self):
         for i in range(self.params_table.rowCount()):

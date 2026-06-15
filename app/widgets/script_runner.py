@@ -3,9 +3,10 @@
 import ast
 import os
 import re
+import shlex
 import subprocess
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 from PyQt6.QtCore import Qt, QProcess, QProcessEnvironment, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -22,19 +23,24 @@ from app.theme import Colors, theme_manager
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Directory containing the auto-loaded ``sitecustomize.py`` bootstrap that
+# patches asyncua's 1-second per-request default timeout in launched scripts.
+_BOOTSTRAP_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "_script_bootstrap")
+
+
 def _parse_argparse_args(script_path: str) -> list[dict]:
     """
     Run the script with --help and parse argparse output.
     Returns list of dicts: {name, dest, type, default, choices, help, required}
     """
     try:
-        env = QProcessEnvironment.systemEnvironment()
         result = subprocess.run(
             [sys.executable, script_path, "--help"],
             capture_output=True,
             text=True,
             timeout=5,
             env=dict(os.environ),
+            cwd=os.path.dirname(script_path) or None,
         )
         output = result.stdout + result.stderr
         return _parse_help_output(output)
@@ -49,14 +55,12 @@ def _parse_help_output(help_text: str) -> list[dict]:
     # Argparse wraps long help at ~78 chars; continuation lines start with many spaces
     normalized = re.sub(r"\n\s{20,}", " ", help_text)
 
-    pattern = re.compile(
-        r"^\s{2,4}(-\w)?,?\s*(--[\w\-]+)(?:\s+([A-Z][A-Z0-9_{}|,]+))?\s*(.*?)$",
-        re.MULTILINE
-    )
+    pattern = re.compile(r"^\s{2,}((?:-\w,\s*)?--[\w\-]+)(?:\s+([^\n]+?))?\s{2,}(.+)$", re.MULTILINE)
     for m in pattern.finditer(normalized):
-        long_flag = m.group(2)
-        metavar = m.group(3)
-        description = m.group(4).strip()
+        flags = m.group(1)
+        long_flag = flags.split(",")[-1].strip()
+        metavar = (m.group(2) or "").strip()
+        description = m.group(3).strip()
 
         if not long_flag or long_flag in ("--help", "--version"):
             continue
@@ -110,9 +114,136 @@ def _parse_help_output(help_text: str) -> list[dict]:
             "type": arg_type,
             "default": default,
             "help": description,
+            "choices": _choices_from_metavar(metavar),
+            "action": "store_true" if arg_type == "bool" else "store",
+            "positional": False,
         })
 
     return args
+
+
+def _choices_from_metavar(metavar: str) -> list[str]:
+    if metavar.startswith("{") and "}" in metavar:
+        choices_text = metavar[1:metavar.index("}")]
+        return [choice.strip() for choice in choices_text.split(",") if choice.strip()]
+    return []
+
+
+def _parse_argparse_ast_args(script_path: str) -> list[dict]:
+    try:
+        with open(script_path, "r", encoding="utf-8") as f:
+            source = f.read()
+        tree = ast.parse(source)
+    except Exception:
+        return []
+
+    constants = _module_constants(tree)
+    args = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute) or node.func.attr != "add_argument":
+            continue
+
+        option_strings = [arg.value for arg in node.args if isinstance(arg, ast.Constant) and isinstance(arg.value, str)]
+        if not option_strings:
+            continue
+
+        name = next((opt for opt in option_strings if opt.startswith("--")), option_strings[0])
+        if name in ("--help", "-h"):
+            continue
+
+        kwargs = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+        action = _literal(kwargs.get("action"), constants) or "store"
+        choices = _extract_choices(kwargs.get("choices"), constants)
+        default = _literal(kwargs.get("default"), constants)
+        required = bool(_literal(kwargs.get("required"), constants) or False)
+        help_text = str(_literal(kwargs.get("help"), constants) or "")
+        arg_type = _arg_type_from_ast(kwargs.get("type"), default, action, choices, name)
+
+        args.append({
+            "name": name,
+            "dest": str(_literal(kwargs.get("dest"), constants) or name.lstrip("-").replace("-", "_")),
+            "type": arg_type,
+            "default": "" if default is None else str(default),
+            "help": help_text,
+            "choices": [str(choice) for choice in choices],
+            "action": str(action),
+            "required": required,
+            "positional": not name.startswith("-"),
+        })
+
+    return args
+
+
+def _module_constants(tree: ast.Module) -> dict[str, Any]:
+    constants: dict[str, Any] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name):
+            try:
+                constants[target.id] = ast.literal_eval(node.value)
+            except Exception:
+                pass
+    return constants
+
+
+def _literal(node: ast.AST | None, constants: dict[str, Any]) -> Any:
+    if node is None:
+        return None
+    if isinstance(node, ast.Name) and node.id in constants:
+        return constants[node.id]
+    if isinstance(node, ast.Name):
+        return node.id
+    try:
+        return ast.literal_eval(node)
+    except Exception:
+        return None
+
+
+def _extract_choices(node: ast.AST | None, constants: dict[str, Any]) -> list[Any]:
+    value = _literal(node, constants)
+    if isinstance(value, set):
+        return sorted(value)
+    if isinstance(value, (list, tuple)):
+        return list(value)
+
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "list" and node.args:
+        source = node.args[0]
+        if (
+            isinstance(source, ast.Call)
+            and isinstance(source.func, ast.Attribute)
+            and source.func.attr == "keys"
+            and isinstance(source.func.value, ast.Name)
+        ):
+            mapped = constants.get(source.func.value.id)
+            if isinstance(mapped, dict):
+                return list(mapped.keys())
+
+    return []
+
+
+def _arg_type_from_ast(node: ast.AST | None, default: Any, action: str, choices: list[Any], name: str) -> str:
+    if action in ("store_true", "store_false"):
+        return "bool"
+    if isinstance(node, ast.Name):
+        if node.id in ("int", "float", "bool", "str"):
+            return node.id
+    if isinstance(default, bool):
+        return "bool"
+    if isinstance(default, int) and not isinstance(default, bool):
+        return "int"
+    if isinstance(default, float):
+        return "float"
+    lowered = name.lower()
+    if any(word in lowered for word in ("port", "count", "timeout", "seconds")):
+        return "int"
+    if any(word in lowered for word in ("factor", "rate", "ratio")):
+        return "float"
+    return "str"
 
 
 def _parse_ast_args(script_path: str) -> list[dict]:
@@ -197,6 +328,10 @@ def detect_script_args(script_path: str) -> tuple[list[dict], str]:
     Detect script arguments using argparse --help first, then AST fallback.
     Returns (args_list, method_used).
     """
+    args = _parse_argparse_ast_args(script_path)
+    if args:
+        return args, "argparse ast"
+
     args = _parse_argparse_args(script_path)
     if args:
         return args, "argparse"
@@ -493,7 +628,7 @@ class ScriptRunnerPanel(QWidget):
                 padding: 8px;
                 font-family: 'Menlo', 'Courier New', 'Courier';
                 font-size: 11px;
-                color: #a8d8a8;
+                color: {Colors.TEXT_PRIMARY};
             }}
         """)
         
@@ -556,7 +691,8 @@ class ScriptRunnerPanel(QWidget):
                 if isinstance(val_widget, QComboBox):
                     saved_vals.append(val_widget.currentText())
                 else:
-                    saved_vals.append("")
+                    val_item = self.args_table.item(i, 2)
+                    saved_vals.append(val_item.text() if val_item else "")
 
             self._populate_args_table(self._args_data)
 
@@ -674,7 +810,26 @@ class ScriptRunnerPanel(QWidget):
             self.args_table.setItem(i, 1, type_item)
 
             # Value widget
-            if arg["type"] == "bool":
+            choices = arg.get("choices") or []
+            if choices:
+                combo = QComboBox()
+                combo.addItems([str(choice) for choice in choices])
+                combo.setStyleSheet(f"""
+                    QComboBox {{
+                        background-color: {Colors.BG_INPUT};
+                        color: {Colors.TEXT_PRIMARY};
+                        border: 1px solid {Colors.BORDER};
+                        border-radius: 4px;
+                        padding: 2px 6px;
+                    }}
+                """)
+                default = str(arg.get("default", ""))
+                if default:
+                    idx = combo.findText(default)
+                    if idx >= 0:
+                        combo.setCurrentIndex(idx)
+                self.args_table.setCellWidget(i, 2, combo)
+            elif arg["type"] == "bool":
                 combo = QComboBox()
                 combo.addItems(["False", "True"])
                 combo.setStyleSheet(f"""
@@ -702,6 +857,8 @@ class ScriptRunnerPanel(QWidget):
         for i, arg in enumerate(self._args_data):
             name = arg["name"]
             arg_type = arg["type"]
+            action = arg.get("action", "store")
+            positional = arg.get("positional", False)
 
             combo = self.args_table.cellWidget(i, 2)
             if combo:
@@ -711,9 +868,17 @@ class ScriptRunnerPanel(QWidget):
                 val = item.text() if item else ""
 
             if arg_type == "bool":
-                if val == "True":
-                    cmd.append(name)  # store_true flag
-                # else don't append
+                if action == "store_false":
+                    if val == "False":
+                        cmd.append(name)
+                elif action == "store_true":
+                    if val == "True":
+                        cmd.append(name)
+                elif val.strip():
+                    cmd.extend([name, val.strip()])
+            elif positional:
+                if val.strip():
+                    cmd.append(val.strip())
             else:
                 if val.strip():
                     cmd.extend([name, val.strip()])
@@ -721,7 +886,6 @@ class ScriptRunnerPanel(QWidget):
         # Extra args
         extra = self.extra_args_input.text().strip()
         if extra:
-            import shlex
             cmd.extend(shlex.split(extra))
 
         return cmd
@@ -744,7 +908,19 @@ class ScriptRunnerPanel(QWidget):
 
         # Use venv python if running inside one
         env = QProcessEnvironment.systemEnvironment()
+        # Inject the asyncua request-timeout bootstrap (via PYTHONPATH +
+        # sitecustomize) so method calls in the script are not cancelled after
+        # asyncua's hardcoded 1-second default. Does not modify the script.
+        existing_pp = env.value("PYTHONPATH") if env.contains("PYTHONPATH") else ""
+        env.insert(
+            "PYTHONPATH",
+            _BOOTSTRAP_DIR + (os.pathsep + existing_pp if existing_pp else ""),
+        )
+        if not env.contains("ASYNCUA_REQUEST_TIMEOUT"):
+            env.insert("ASYNCUA_REQUEST_TIMEOUT", "600")
+        env.insert("PYTHONUNBUFFERED", "1")
         self._process.setProcessEnvironment(env)
+        self._process.setWorkingDirectory(os.path.dirname(self._script_path) or os.getcwd())
         self._process.setProgram(cmd[0])
         self._process.setArguments(cmd[1:])
         self._process.start()
@@ -810,7 +986,7 @@ class ScriptRunnerPanel(QWidget):
             self.output_box.setStyleSheet(self.output_box.styleSheet())
             # Insert red-coloured text via HTML
             escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
-            self.output_box.insertHtml(f"<span style='color:#ff8080'>{escaped}</span>")
+            self.output_box.insertHtml(f"<span style='color:{Colors.ERROR}'>{escaped}</span>")
         else:
             self.output_box.insertPlainText(text)
 

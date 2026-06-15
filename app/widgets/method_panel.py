@@ -27,6 +27,7 @@ class MethodPanel(QWidget):
         self._opcua_client = None
         self._server_name = ""
         self._input_args: list[MethodArgument] = []
+        self._call_task: Optional[asyncio.Task] = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -213,36 +214,49 @@ class MethodPanel(QWidget):
         pass  # Could load args for the selected method
 
     def _on_call(self):
-        if self._method_node_id and self._opcua_client:
-            asyncio.ensure_future(self._call_method())
+        if not self._method_node_id or not self._opcua_client:
+            return
+        if self._call_task and not self._call_task.done():
+            return
+        self._call_task = asyncio.ensure_future(self._call_method())
 
     async def _call_method(self):
         if not self._method_node_id or not self._opcua_client:
             return
 
-        args = []
-        for i in range(self.params_table.rowCount()):
-            val_item = self.params_table.item(i, 3)
-            type_item = self.params_table.item(i, 2)
-            if val_item and type_item:
-                raw_val = val_item.text()
-                data_type = type_item.text()
-                try:
-                    args.append(self._convert_arg(raw_val, data_type))
-                except Exception:
-                    args.append(raw_val)
+        self.call_btn.setEnabled(False)
+        self.call_btn.setText("Calling...")
+        self.output_display.setText("Waiting for method result...")
 
-        result = await self._opcua_client.call_method(
-            self._parent_node_id, self._method_node_id,
-            args, self._server_name
-        )
+        try:
+            args = []
+            for i in range(self.params_table.rowCount()):
+                val_item = self.params_table.item(i, 3)
+                type_item = self.params_table.item(i, 2)
+                if val_item and type_item:
+                    raw_val = val_item.text()
+                    data_type = type_item.text()
+                    try:
+                        args.append(self._convert_arg(raw_val, data_type))
+                    except Exception:
+                        args.append(raw_val)
 
-        if result is not None:
-            self.output_display.setText(f"OutputArguments: {result}")
-        else:
-            self.output_display.setText("OutputArguments: ()")
+            result = await self._opcua_client.call_method(
+                self._parent_node_id, self._method_node_id,
+                args, self._server_name
+            )
 
-        self.method_called.emit(self._method_node_id, self.output_display.toPlainText())
+            if result is not None:
+                self.output_display.setText(f"OutputArguments: {result}")
+            else:
+                self.output_display.setText("OutputArguments: ()")
+
+            self.method_called.emit(self._method_node_id, self.output_display.toPlainText())
+        except Exception as exc:
+            self.output_display.setText(f"Call failed: {exc}")
+        finally:
+            self.call_btn.setEnabled(True)
+            self.call_btn.setText("▶  Call")
 
     def _on_clear(self):
         for i in range(self.params_table.rowCount()):

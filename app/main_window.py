@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
         self._load_settings()
         
         # Apply theme from settings before setting up UI
-        theme = self._settings.get("theme", "dark")
+        theme = self._settings.get("theme", "system")
         theme_manager.apply_theme(theme)
         
         self._setup_ui()
@@ -265,35 +265,52 @@ class MainWindow(QMainWindow):
 
         self.toolbar.setStyleSheet(f"""
             QToolBar {{
-                background-color: {Colors.BG_DARK};
+                background-color: {Colors.BG_CARD};
+                border: none;
                 border-bottom: 1px solid {Colors.BORDER};
-                padding: 8px 16px;
-                spacing: 8px;
+                padding: 7px 14px;
+                spacing: 4px;
+            }}
+            QToolBar::separator {{
+                background-color: {Colors.BORDER};
+                width: 1px;
+                margin: 6px 10px;
             }}
             QToolButton {{
                 background-color: transparent;
-                color: {Colors.TEXT_SECONDARY};
-                border-radius: 6px;
-                padding: 6px 12px;
+                color: {Colors.TEXT_PRIMARY};
+                border: 1px solid transparent;
+                border-radius: 8px;
+                padding: 7px 13px;
                 font-size: 13px;
                 font-weight: 500;
             }}
             QToolButton:hover {{
                 background-color: {Colors.BG_HOVER};
+                border: 1px solid {Colors.BORDER};
                 color: {Colors.TEXT_PRIMARY};
+            }}
+            QToolButton:pressed {{
+                background-color: {Colors.BG_SURFACE};
             }}
             QToolButton:checked {{
                 background-color: {Colors.ACCENT};
-                color: white;
+                border: 1px solid {Colors.ACCENT};
+                color: #ffffff;
+            }}
+            QToolButton:checked:hover {{
+                background-color: {Colors.ACCENT_HOVER};
+                border: 1px solid {Colors.ACCENT_HOVER};
             }}
         """)
 
         self.title_label.setStyleSheet(f"""
-            font-size: 14px;
-            font-weight: bold;
-            color: {Colors.TEXT_PRIMARY};
+            font-size: 15px;
+            font-weight: 800;
+            color: {Colors.ACCENT};
             background: transparent;
-            padding: 0 8px;
+            padding: 0 12px 0 4px;
+            letter-spacing: 0.3px;
         """)
 
         # Update toggle button text if theme changes
@@ -364,7 +381,7 @@ class MainWindow(QMainWindow):
         self.subs_btn.toggled.connect(self._toggle_subscriptions)
         self.toolbar.addWidget(self.subs_btn)
 
-
+        self.toolbar.addSeparator()
 
         # Import/Export
         import_btn = QToolButton()
@@ -378,6 +395,8 @@ class MainWindow(QMainWindow):
         export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         export_btn.clicked.connect(self._on_export_config)
         self.toolbar.addWidget(export_btn)
+
+        self.toolbar.addSeparator()
 
         # Settings
         settings_btn = QToolButton()
@@ -441,7 +460,7 @@ class MainWindow(QMainWindow):
         self.server_panel.update_server_status(url, ConnectionStatus.CONNECTING)
 
         # Create client
-        client = OpcUaClient(self)
+        client = OpcUaClient(self, request_timeout=600.0, watchdog_interval=600.0)
         client.connection_changed.connect(
             lambda u, s: self.server_panel.update_server_status(u, s)
         )
@@ -455,6 +474,7 @@ class MainWindow(QMainWindow):
             security_policy=server_info.security_policy,
             username=server_info.username,
             password=server_info.password,
+            timeout=self._settings.get("timeout", 10),
         )
 
         if success:
@@ -594,7 +614,7 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self._settings = dialog.get_settings()
             self._save_settings()
-            theme_manager.apply_theme(self._settings.get("theme", "dark"))
+            theme_manager.apply_theme(self._settings.get("theme", "system"))
             self.statusBar().showMessage("Settings saved")
 
     def _on_export_config(self):
@@ -683,8 +703,10 @@ class MainWindow(QMainWindow):
             if os.path.exists(f):
                 os.remove(f)
                 
-        # Revert to default theme
-        theme_manager.apply_theme("dark")
+        # Revert to default theme (System)
+        self._settings = {"theme": "system"}
+        self._save_settings()
+        theme_manager.apply_theme("system")
         self.statusBar().showMessage("All data has been wiped.")
 
     def _on_favorite_clicked(self, item: FavoriteItem):

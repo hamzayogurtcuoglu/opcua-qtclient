@@ -1,4 +1,4 @@
-"""Server discovery dialog — find OPC UA servers via LDS."""
+"""Server discovery dialog — find OPC UA servers via LDS and TCP probing."""
 
 import asyncio
 from typing import Optional
@@ -7,12 +7,19 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QListWidget, QListWidgetItem,
-    QCheckBox, QFrame,
+    QFrame,
 )
 
 from app.opcua_client import OpcUaClient
 from app.models import ServerInfo
 from app.theme import Colors
+
+
+DEFAULT_SCAN_HOST = "127.0.0.1"
+DEFAULT_PORT_SPEC = "1-65535"
+SCAN_WORKERS = 256
+TCP_CONNECT_TIMEOUT = 0.15
+OPCUA_DISCOVERY_TIMEOUT = 2.0
 
 
 class DiscoveryDialog(QDialog):
@@ -47,10 +54,23 @@ class DiscoveryDialog(QDialog):
         """)
         layout.addWidget(title)
 
-        subtitle = QLabel("Click the button below to scan common local ports (4840-4845) for available OPC UA servers.")
+        subtitle = QLabel("Scan the selected host and port range for listening OPC UA servers.")
         subtitle.setStyleSheet(f"font-size: 12px; color: {Colors.TEXT_SECONDARY}; background: transparent;")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+
+        target_layout = QHBoxLayout()
+        target_layout.setSpacing(8)
+
+        self.host_input = QLineEdit(DEFAULT_SCAN_HOST)
+        self.host_input.setPlaceholderText("Host")
+        target_layout.addWidget(self.host_input, 1)
+
+        self.ports_input = QLineEdit(DEFAULT_PORT_SPEC)
+        self.ports_input.setPlaceholderText("Ports, e.g. 4840,4841,4900-5000")
+        target_layout.addWidget(self.ports_input, 2)
+
+        layout.addLayout(target_layout)
 
         # Scan button
         scan_layout = QHBoxLayout()
@@ -106,30 +126,80 @@ class DiscoveryDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _on_find(self):
-        self.status_label.setText("Scanning ports 4840-4845...")
+        try:
+            ports = self._parse_ports(self.ports_input.text())
+        except ValueError as exc:
+            self.status_label.setText(str(exc))
+            return
+
+        host = self.host_input.text().strip() or DEFAULT_SCAN_HOST
+        self.status_label.setText(f"Scanning {host} ports {self.ports_input.text().strip() or DEFAULT_PORT_SPEC}...")
         self.find_btn.setEnabled(False)
         self.results_list.clear()
         self._results.clear()
-        asyncio.ensure_future(self._scan_all())
+        asyncio.ensure_future(self._scan_all(host, ports))
 
-    async def _scan_all(self):
-        tasks = []
-        for port in range(4840, 4846):
-            url = f"opc.tcp://127.0.0.1:{port}"
-            tasks.append(self._try_discover(url))
-        
-        await asyncio.gather(*tasks)
+    async def _scan_all(self, host: str, ports: list[int]):
+        queue: asyncio.Queue[int | None] = asyncio.Queue()
+        total = len(ports)
+        scanned = 0
+        open_ports = 0
+
+        for port in ports:
+            queue.put_nowait(port)
+        for _ in range(min(SCAN_WORKERS, total)):
+            queue.put_nowait(None)
+
+        async def worker():
+            nonlocal scanned, open_ports
+            while True:
+                port = await queue.get()
+                if port is None:
+                    queue.task_done()
+                    return
+
+                try:
+                    if await self._is_tcp_open(host, port):
+                        open_ports += 1
+                        await self._try_discover(f"opc.tcp://{host}:{port}")
+                finally:
+                    scanned += 1
+                    if scanned % 500 == 0 or scanned == total:
+                        self.status_label.setText(
+                            f"Scanned {scanned}/{total} port(s), {open_ports} open, found {len(self._results)} server(s)..."
+                        )
+                    queue.task_done()
+
+        workers = [asyncio.create_task(worker()) for _ in range(min(SCAN_WORKERS, total))]
+        await queue.join()
+        await asyncio.gather(*workers, return_exceptions=True)
 
         self.status_label.setText(f"Found {len(self._results)} server(s).")
         self.add_btn.setEnabled(len(self._results) > 0)
         self.find_btn.setEnabled(True)
 
+    async def _is_tcp_open(self, host: str, port: int) -> bool:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=TCP_CONNECT_TIMEOUT,
+            )
+            writer.close()
+            await writer.wait_closed()
+            return True
+        except Exception:
+            return False
+
     async def _try_discover(self, url: str):
         try:
             client = OpcUaClient()
-            servers = await client.discover_servers(url)
+            servers = await client.discover_servers(url, timeout=OPCUA_DISCOVERY_TIMEOUT)
             if not servers:
-                return
+                probe = await client.probe_server(url, timeout=OPCUA_DISCOVERY_TIMEOUT)
+                if probe:
+                    servers = [probe]
+                else:
+                    return
 
             for server in servers:
                 name = server.get("name", "Unknown")
@@ -157,6 +227,33 @@ class DiscoveryDialog(QDialog):
                     self.results_list.addItem(item)
         except Exception:
             pass
+
+    def _parse_ports(self, text: str) -> list[int]:
+        spec = (text or DEFAULT_PORT_SPEC).strip()
+        ports: set[int] = set()
+
+        try:
+            for part in spec.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+
+                if "-" in part:
+                    start_text, end_text = part.split("-", 1)
+                    start = int(start_text.strip())
+                    end = int(end_text.strip())
+                    if start > end:
+                        start, end = end, start
+                    ports.update(range(start, end + 1))
+                else:
+                    ports.add(int(part))
+        except ValueError as exc:
+            raise ValueError("Use ports like 4840,4841 or 4800-4900.") from exc
+
+        ports = {port for port in ports if 1 <= port <= 65535}
+        if not ports:
+            raise ValueError("Enter at least one valid port between 1 and 65535.")
+        return sorted(ports)
 
     def _on_add(self):
         from PyQt6.QtWidgets import QInputDialog
