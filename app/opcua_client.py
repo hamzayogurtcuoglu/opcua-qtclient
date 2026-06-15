@@ -1,7 +1,9 @@
 """Async OPC UA client wrapper using asyncua library."""
 
 import asyncio
+import dataclasses
 import logging
+import re
 from typing import Any, Optional
 
 from asyncua import Client, ua, Node
@@ -227,6 +229,13 @@ class OpcUaClient(QObject):
             except TypeError:
                 await asyncio.wait_for(self._client.connect(), timeout=timeout)
             self._apply_request_timeout_patch()
+            # Register the server's custom structures/enums as Python classes in
+            # the ``ua`` namespace so method arguments typed as extension objects
+            # (e.g. HeaderStruct) can be introspected field-by-field and built.
+            try:
+                await self._client.load_data_type_definitions()
+            except Exception as e:
+                logger.warning("Could not load custom data type definitions: %s", e)
             self._set_status(ConnectionStatus.CONNECTED)
             logger.info(f"Connected to {url}")
             return True
@@ -692,6 +701,108 @@ class OpcUaClient(QObject):
             if builtin:
                 return builtin
         return self._compact_nodeid(data_type_id)
+
+    # ── Structure (extension object) introspection & building ───────────────
+
+    def get_struct_fields(self, type_name: str) -> list[dict]:
+        """Return field definitions for a custom structure data type.
+
+        After ``load_data_type_definitions`` the server's structures exist as
+        dataclasses in the ``ua`` namespace. Returns a list of
+        ``{"name": ..., "type": ...}`` dicts, or an empty list when ``type_name``
+        is not a known structure (e.g. a primitive type).
+        """
+        cls = getattr(ua, type_name, None)
+        if cls is None or not dataclasses.is_dataclass(cls):
+            return []
+        fields = []
+        for f in dataclasses.fields(cls):
+            fields.append({"name": f.name, "type": self._field_type_label(f.type)})
+        return fields
+
+    def build_struct_value(self, type_name: str, values: dict) -> Any:
+        """Construct an extension-object instance of ``type_name`` from a dict.
+
+        Each provided value is coerced to the field's declared type. Unknown
+        keys are ignored; missing fields keep their dataclass defaults. Nested
+        structures are supported when the supplied value is itself a dict.
+        """
+        cls = getattr(ua, type_name, None)
+        if cls is None or not dataclasses.is_dataclass(cls):
+            raise ValueError(f"Unknown structure type: {type_name}")
+        obj = cls()
+        field_types = {f.name: f.type for f in dataclasses.fields(cls)}
+        for name, raw in (values or {}).items():
+            if name not in field_types:
+                continue
+            try:
+                setattr(obj, name, self._coerce_field(field_types[name], raw))
+            except Exception as e:
+                logger.warning("Could not set field %s on %s: %s", name, type_name, e)
+        return obj
+
+    @staticmethod
+    def _field_type_label(type_spec) -> str:
+        """Human-readable label for a dataclass field type (e.g. ``Int32[]``)."""
+        s = type_spec if isinstance(type_spec, str) else getattr(type_spec, "__name__", str(type_spec))
+        s = s.strip().strip("'\"").replace("ua.", "").replace(" ", "")
+        m = re.match(r"(?:list|List)\[(.+)\]$", s)
+        if m:
+            return m.group(1).strip("'\"").replace("ua.", "") + "[]"
+        return s
+
+    @classmethod
+    def _unwrap_type(cls, type_spec):
+        """Return (is_list, inner_spec) for a field type string or class."""
+        s = type_spec if isinstance(type_spec, str) else getattr(type_spec, "__name__", str(type_spec))
+        s = s.strip().strip("'\"").replace(" ", "")
+        m = re.match(r"(?:list|List)\[(.+)\]$", s)
+        if m:
+            return True, m.group(1).strip("'\"")
+        return False, type_spec
+
+    def _coerce_field(self, type_spec, raw) -> Any:
+        is_list, inner = self._unwrap_type(type_spec)
+        if is_list:
+            if isinstance(raw, list):
+                items = raw
+            elif isinstance(raw, str) and raw.strip():
+                items = [p.strip() for p in raw.split(",")]
+            else:
+                items = []
+            return [self._coerce_scalar(inner, x) for x in items]
+        return self._coerce_scalar(inner, raw)
+
+    def _coerce_scalar(self, type_spec, raw) -> Any:
+        # Resolve to a class when possible to detect nested structures.
+        if isinstance(type_spec, type):
+            cls = type_spec
+        else:
+            short = str(type_spec).strip().strip("'\"").replace("ua.", "").strip()
+            cls = getattr(ua, short, None)
+
+        if cls is not None and dataclasses.is_dataclass(cls) and isinstance(raw, dict):
+            return self.build_struct_value(cls.__name__, raw)
+
+        name = cls.__name__ if isinstance(cls, type) else str(type_spec).strip("'\"").replace("ua.", "")
+        return self._convert_scalar_by_name(name, raw)
+
+    @staticmethod
+    def _convert_scalar_by_name(name: str, raw) -> Any:
+        if isinstance(raw, bool):
+            return raw
+        if isinstance(raw, (int, float)):
+            return raw
+        s = "" if raw is None else str(raw)
+        n = name.lower()
+        if n in ("boolean", "bool"):
+            return s.strip().lower() in ("true", "1", "yes", "on")
+        if ("int" in n or "byte" in n) and "point" not in n:
+            return int(s) if s.strip() else 0
+        if any(k in n for k in ("float", "double", "decimal", "number")):
+            return float(s) if s.strip() else 0.0
+        return s
+
 
     async def discover_servers(self, discovery_url: str = "opc.tcp://localhost:4840", timeout: float = 3.0) -> list[dict]:
         """Discover OPC UA servers using LDS."""

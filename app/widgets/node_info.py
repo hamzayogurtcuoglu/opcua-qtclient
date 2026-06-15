@@ -1,6 +1,7 @@
 """Node information widget — shows Properties, Value, Write, Call Method tabs."""
 
 import asyncio
+import json
 from typing import Optional, Any
 
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
@@ -93,18 +94,116 @@ class ValueEditorDialog(QDialog):
         return self.editor.toPlainText()
 
 
+class StructFieldEditorDialog(QDialog):
+    """A form popup for editing the members of a structure (extension object)."""
+
+    def __init__(self, fields: list[dict], values: Optional[dict] = None,
+                 title: str = "Edit Structure", parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumWidth(440)
+        values = values or {}
+        self._editors: dict[str, Any] = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        info = QLabel("Set each member of the structure:")
+        layout.addWidget(info)
+
+        form_host = QWidget()
+        form = QFormLayout(form_host)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(8)
+
+        for f in fields:
+            name = f.get("name", "")
+            ftype = f.get("type", "")
+            cur = values.get(name, "")
+            type_l = (ftype or "").lower()
+            if type_l in ("boolean", "bool"):
+                editor = QComboBox()
+                editor.addItems(["False", "True"])
+                if str(cur).strip().lower() in ("true", "1", "yes", "on"):
+                    editor.setCurrentText("True")
+            else:
+                editor = QLineEdit()
+                if cur not in (None, ""):
+                    if isinstance(cur, (dict, list)):
+                        editor.setText(json.dumps(cur, ensure_ascii=False))
+                    else:
+                        editor.setText(str(cur))
+                editor.setPlaceholderText(ftype)
+            self._editors[name] = editor
+
+            label = QLabel(f"{name}")
+            label.setToolTip(ftype)
+            row = QWidget()
+            row_l = QHBoxLayout(row)
+            row_l.setContentsMargins(0, 0, 0, 0)
+            row_l.setSpacing(8)
+            row_l.addWidget(editor, 1)
+            type_badge = QLabel(ftype)
+            type_badge.setStyleSheet(f"color: {Colors.TEXT_MUTED}; background: transparent;")
+            row_l.addWidget(type_badge, 0)
+            form.addRow(label, row)
+
+        layout.addWidget(form_host, 1)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setStyleSheet(f"""
+            QDialog {{ background-color: {Colors.BG_DARK}; }}
+            QLabel {{ color: {Colors.TEXT_PRIMARY}; background: transparent; }}
+            QLineEdit, QComboBox {{
+                background-color: {Colors.BG_INPUT};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 6px;
+                padding: 5px 8px;
+                color: {Colors.TEXT_PRIMARY};
+            }}
+            QPushButton {{
+                background-color: {Colors.BG_CARD};
+                color: {Colors.TEXT_PRIMARY};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 6px;
+                padding: 6px 18px;
+            }}
+            QPushButton:hover {{ background-color: {Colors.BG_HOVER}; }}
+        """)
+
+    def values(self) -> dict:
+        out: dict[str, Any] = {}
+        for name, editor in self._editors.items():
+            if isinstance(editor, QComboBox):
+                out[name] = editor.currentText()
+            else:
+                out[name] = editor.text()
+        return out
+
+
 class ValueCell(QWidget):
     """A table cell with an inline editor and a ``…`` button opening a popup.
 
     Used for method input/output values so long or structured content (e.g.
-    extension objects, NodeIds, JSON) stays readable and editable.
+    extension objects, NodeIds, JSON) stays readable and editable. When
+    ``struct_fields`` is supplied the ``…`` button opens a per-member form so
+    each field of the structure can be set individually.
     """
 
     def __init__(self, text: str = "", read_only: bool = False,
-                 title: str = "Value", parent: Optional[QWidget] = None):
+                 title: str = "Value", struct_fields: Optional[list] = None,
+                 parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._title = title
         self._read_only = read_only
+        self._struct_fields = struct_fields or []
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(2, 0, 2, 0)
@@ -118,7 +217,12 @@ class ValueCell(QWidget):
         self.expand_btn = QToolButton()
         self.expand_btn.setText("…")
         self.expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.expand_btn.setToolTip("Open editor" if not read_only else "View full value")
+        if self._struct_fields:
+            self.expand_btn.setToolTip("Edit structure members")
+            self.line.setReadOnly(True)
+            self.line.setPlaceholderText("Click … to set members")
+        else:
+            self.expand_btn.setToolTip("Open editor" if not read_only else "View full value")
         self.expand_btn.clicked.connect(self._open_popup)
         layout.addWidget(self.expand_btn, 0)
 
@@ -150,6 +254,20 @@ class ValueCell(QWidget):
         """)
 
     def _open_popup(self):
+        if self._struct_fields:
+            try:
+                current = json.loads(self.line.text()) if self.line.text().strip() else {}
+                if not isinstance(current, dict):
+                    current = {}
+            except Exception:
+                current = {}
+            dlg = StructFieldEditorDialog(
+                self._struct_fields, current, title=self._title, parent=self,
+            )
+            if dlg.exec():
+                values = dlg.values()
+                self.line.setText(json.dumps(values, ensure_ascii=False))
+            return
         dlg = ValueEditorDialog(
             self.line.text(), title=self._title,
             read_only=self._read_only, parent=self,
@@ -813,10 +931,19 @@ class CallMethodTab(QWidget):
                     combo.setCurrentText(str(arg.value).capitalize())
                 self.params_table.setCellWidget(i, 3, combo)
             else:
+                # Detect structure (extension object) arguments so each member
+                # can be set individually via the … editor popup.
+                struct_fields = []
+                if self._opcua_client is not None:
+                    try:
+                        struct_fields = self._opcua_client.get_struct_fields(arg.data_type)
+                    except Exception:
+                        struct_fields = []
                 cell = ValueCell(
                     str(arg.value or ""),
                     read_only=False,
                     title=f"Input — {arg.name} ({arg.data_type})",
+                    struct_fields=struct_fields,
                 )
                 self.params_table.setCellWidget(i, 3, cell)
 
@@ -894,6 +1021,25 @@ class CallMethodTab(QWidget):
 
                 data_type = type_item.text()
                 raw_val = self._read_cell(self.params_table, i)
+
+                # Structure (extension object) arguments are entered as a JSON
+                # object of member→value via the … editor; build the real
+                # extension object instance here.
+                struct_fields = []
+                try:
+                    struct_fields = self._opcua_client.get_struct_fields(data_type)
+                except Exception:
+                    struct_fields = []
+
+                if struct_fields:
+                    try:
+                        members = json.loads(raw_val) if raw_val.strip() else {}
+                        if not isinstance(members, dict):
+                            members = {}
+                    except Exception:
+                        members = {}
+                    args.append(self._opcua_client.build_struct_value(data_type, members))
+                    continue
 
                 try:
                     args.append(self._convert_arg(raw_val, data_type))
