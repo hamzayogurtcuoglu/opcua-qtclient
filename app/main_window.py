@@ -557,7 +557,7 @@ class MainWindow(QMainWindow):
 
             # Create connection tab
             tab = ConnectionTab(server_info.name, url, client)
-            tab.disconnect_requested.connect(self._on_disconnect_server)
+            tab.disconnect_requested.connect(self._on_disconnect_url)
             tab.add_to_favorites.connect(
                 lambda nid, name, ntype, args: self.favorites_panel.add_favorite(
                     nid, name, ntype, url, server_info.name, args

@@ -166,15 +166,23 @@ def _parse_argparse_ast_args(script_path: str) -> list[dict]:
         required = bool(_literal(kwargs.get("required"), constants) or False)
         help_text = str(_literal(kwargs.get("help"), constants) or "")
         arg_type = _arg_type_from_ast(kwargs.get("type"), default, action, choices, name)
+        nargs = _literal(kwargs.get("nargs"), constants)
+
+        # Render a list/tuple default (common with nargs) as space-separated text.
+        if isinstance(default, (list, tuple)):
+            default_text = " ".join(str(d) for d in default)
+        else:
+            default_text = "" if default is None else str(default)
 
         args.append({
             "name": name,
             "dest": str(_literal(kwargs.get("dest"), constants) or name.lstrip("-").replace("-", "_")),
             "type": arg_type,
-            "default": "" if default is None else str(default),
+            "default": default_text,
             "help": help_text,
             "choices": [str(choice) for choice in choices],
             "action": str(action),
+            "nargs": nargs,
             "required": required,
             "positional": not name.startswith("-"),
         })
@@ -855,6 +863,17 @@ class ScriptRunnerPanel(QWidget):
 
     # ── Run / Stop ────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _is_multi_value(nargs, action: str) -> bool:
+        """True when an argument expects multiple whitespace-separated values."""
+        if nargs is None:
+            return False
+        if isinstance(nargs, int):
+            return nargs > 1
+        if isinstance(nargs, str):
+            return nargs in ("+", "*") or (nargs.isdigit() and int(nargs) > 1)
+        return False
+
     def _build_command(self) -> list[str]:
         """Build the subprocess command list from current values."""
         # In a PyInstaller build, sys.executable is the app itself (not a Python
@@ -870,6 +889,7 @@ class ScriptRunnerPanel(QWidget):
             arg_type = arg["type"]
             action = arg.get("action", "store")
             positional = arg.get("positional", False)
+            nargs = arg.get("nargs")
 
             combo = self.args_table.cellWidget(i, 2)
             if combo:
@@ -887,6 +907,17 @@ class ScriptRunnerPanel(QWidget):
                         cmd.append(name)
                 elif val.strip():
                     cmd.extend([name, val.strip()])
+            elif self._is_multi_value(nargs, action):
+                # nargs like 4, "+", "*", "N" expect several values; split the
+                # cell text on whitespace so each token becomes its own arg
+                # (e.g. "1 1 1 10" -> --range 1 1 1 10).
+                tokens = shlex.split(val.strip()) if val.strip() else []
+                if tokens:
+                    if positional:
+                        cmd.extend(tokens)
+                    else:
+                        cmd.append(name)
+                        cmd.extend(tokens)
             elif positional:
                 if val.strip():
                     cmd.append(val.strip())
