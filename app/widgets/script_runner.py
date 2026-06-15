@@ -33,6 +33,11 @@ def _parse_argparse_args(script_path: str) -> list[dict]:
     Run the script with --help and parse argparse output.
     Returns list of dicts: {name, dest, type, default, choices, help, required}
     """
+    # In a frozen build sys.executable is the GUI app, not Python; running it
+    # with the script path would just open a second app window. Skip this
+    # subprocess path entirely (the AST-based detector is used first anyway).
+    if getattr(sys, "frozen", False):
+        return []
     try:
         result = subprocess.run(
             [sys.executable, script_path, "--help"],
@@ -852,7 +857,13 @@ class ScriptRunnerPanel(QWidget):
 
     def _build_command(self) -> list[str]:
         """Build the subprocess command list from current values."""
-        cmd = [sys.executable, self._script_path]
+        # In a PyInstaller build, sys.executable is the app itself (not a Python
+        # interpreter), so we invoke the bundled exe in its --run-script mode,
+        # which runs the script in-process. From source we use the interpreter.
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--run-script", self._script_path]
+        else:
+            cmd = [sys.executable, self._script_path]
 
         for i, arg in enumerate(self._args_data):
             name = arg["name"]
