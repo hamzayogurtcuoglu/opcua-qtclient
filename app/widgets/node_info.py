@@ -455,6 +455,7 @@ class DataAccessTab(QWidget):
     """Combined tab for reading (auto-refreshing) and writing values to variable nodes."""
 
     value_written = pyqtSignal(str, str)  # node_id, value string
+    add_to_favorites = pyqtSignal(str, str, NodeType, list)  # node_id, name, type, [value, data_type]
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -535,6 +536,11 @@ class DataAccessTab(QWidget):
         self.write_btn.setProperty("class", "primary")
         self.write_btn.clicked.connect(self._on_write)
         form_layout.addWidget(self.write_btn)
+
+        self.save_set_btn = QPushButton("★ Save Set")
+        self.save_set_btn.setToolTip("Save this value as a 'set variable' favorite")
+        self.save_set_btn.clicked.connect(self._on_save_set_favorite)
+        form_layout.addWidget(self.save_set_btn)
 
         write_layout.addLayout(form_layout)
 
@@ -644,6 +650,26 @@ class DataAccessTab(QWidget):
     def _on_write(self):
         if self._node_id and self._opcua_client:
             asyncio.ensure_future(self._write_value())
+
+    def _on_save_set_favorite(self):
+        """Save the current node + value as a reusable 'set variable' favorite."""
+        if not self._node_id:
+            return
+        from PyQt6.QtWidgets import QInputDialog
+        value = self.value_input.text()
+        data_type = self.type_combo.currentText()
+        default_name = f"Set {self._node_name or self._node_id} = {value}"
+        name, ok = QInputDialog.getText(
+            self,
+            "Add to Favorites",
+            "Enter a name for this set-value action:",
+            text=default_name,
+        )
+        if ok and name.strip():
+            # input_args carries [value, data_type] through the shared pipeline.
+            self.add_to_favorites.emit(
+                self._node_id, name.strip(), NodeType.WRITE, [value, data_type]
+            )
 
     async def _write_value(self):
         if not self._node_id or not self._opcua_client:
@@ -1115,6 +1141,7 @@ class NodeInfoWidget(QWidget):
         self.tabs.addTab(self.call_method_tab, "Call Method")
 
         # Forward favorites signals
+        self.data_access_tab.add_to_favorites.connect(self.add_to_favorites.emit)
         self.properties_tab.add_to_favorites.connect(
             lambda nid, name, ntype: self.add_to_favorites.emit(nid, name, ntype, [])
         )

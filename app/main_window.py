@@ -789,6 +789,12 @@ class MainWindow(QMainWindow):
             self.script_runner_panel.load_script(item.node_id, item.input_args, item.script_content)
             return
 
+        if item.node_type == NodeType.FLOW:
+            self.statusBar().showMessage(
+                f"Flow '{item.display_name}' — right-click → Run Flow to execute, or Edit Flow to change it."
+            )
+            return
+
         asyncio.ensure_future(self._activate_favorite(item, execute=False))
 
     def _on_favorite_execute(self, item: FavoriteItem):
@@ -799,6 +805,14 @@ class MainWindow(QMainWindow):
             success = self.script_runner_panel.load_script(item.node_id, item.input_args, item.script_content)
             if success:
                 self.script_runner_panel._on_run()
+            return
+
+        if item.node_type == NodeType.WRITE:
+            asyncio.ensure_future(self._run_write_favorite(item))
+            return
+
+        if item.node_type == NodeType.FLOW:
+            asyncio.ensure_future(self._run_flow(item))
             return
 
         asyncio.ensure_future(self._activate_favorite(item, execute=True))
@@ -873,6 +887,158 @@ class MainWindow(QMainWindow):
             # 5. Call the method only when explicitly requested.
             if execute:
                 tab.node_info.call_method_tab._on_call()
+
+
+    async def _ensure_tab(self, server_url: str):
+        """Return a connected ConnectionTab for the given server URL.
+
+        Auto-connects using the saved server list when needed, falling back to
+        the currently active tab if the URL is unknown.
+        """
+        if server_url and server_url in self._tabs:
+            return self._tabs[server_url]
+
+        if server_url:
+            server_info = next(
+                (s for s in self.server_panel.get_all_servers() if s.url == server_url),
+                None,
+            )
+            if server_info:
+                self.statusBar().showMessage(f"Auto-connecting to {server_info.name}…")
+                await self._connect_server(server_info)
+                tab = self._tabs.get(server_url)
+                if tab is not None:
+                    return tab
+
+        idx = self.tab_widget.currentIndex()
+        if idx >= 0:
+            return self.tab_widget.widget(idx)
+        return None
+
+    @staticmethod
+    def _convert_write_value(raw: str, data_type: str):
+        """Convert a string value to the proper Python type for an OPC UA write."""
+        converters = {
+            "String": str,
+            "Boolean": lambda v: v.strip().lower() in ("true", "1", "yes"),
+            "Int16": int, "Int32": int, "Int64": int,
+            "UInt16": int, "UInt32": int, "UInt64": int,
+            "Float": float, "Double": float,
+            "Byte": int,
+            "ByteString": lambda v: bytes(v, "utf-8"),
+        }
+        return converters.get(data_type, str)(raw)
+
+    async def _run_write_favorite(self, item: FavoriteItem):
+        """Execute a standalone 'set variable' favorite."""
+        await self._run_write_step({
+            "node_id": item.node_id,
+            "server_url": item.server_url,
+            "write_value": item.write_value,
+            "write_data_type": item.write_data_type,
+            "display_name": item.display_name,
+        })
+
+    async def _run_write_step(self, step: dict):
+        """Write a value to a node as part of a flow / favorite."""
+        tab = await self._ensure_tab(step.get("server_url", ""))
+        if tab is None:
+            raise RuntimeError("No server connection available for set-value step")
+
+        data_type = step.get("write_data_type") or "String"
+        value = self._convert_write_value(step.get("write_value", ""), data_type)
+        ok = await tab.opcua_client.write_value(
+            step["node_id"], value, data_type, tab.server_name
+        )
+        if not ok:
+            raise RuntimeError(f"Write to {step['node_id']} failed")
+        self.statusBar().showMessage(
+            f"✅ Set {step.get('display_name') or step['node_id']} = {step.get('write_value', '')}"
+        )
+
+    async def _run_method_step(self, step: dict):
+        """Call a method as part of a flow, showing it in the UI and awaiting it."""
+        fav = FavoriteItem(
+            display_name=step.get("display_name", ""),
+            node_id=step["node_id"],
+            node_type=NodeType.METHOD,
+            server_url=step.get("server_url", ""),
+            server_name=step.get("server_name", ""),
+            input_args=step.get("input_args", []),
+        )
+        # Load the method into the UI (no call yet).
+        await self._activate_favorite(fav, execute=False)
+
+        tab = self._tabs.get(step.get("server_url", ""))
+        if tab is None:
+            idx = self.tab_widget.currentIndex()
+            tab = self.tab_widget.widget(idx) if idx >= 0 else None
+        if tab is None:
+            raise RuntimeError("No server connection available for method step")
+
+        cmt = tab.node_info.call_method_tab
+        cmt._on_call()
+        if cmt._call_task is not None:
+            await cmt._call_task
+
+    async def _run_script_step(self, step: dict):
+        """Run a script step and wait for the subprocess to finish."""
+        self.script_runner_btn.setChecked(True)
+        self._toggle_script_runner(True)
+        panel = self.script_runner_panel
+        ok = panel.load_script(
+            step["node_id"], step.get("input_args", []), step.get("script_content", "")
+        )
+        if not ok:
+            raise RuntimeError(f"Could not load script {step.get('node_id')}")
+
+        loop = asyncio.get_event_loop()
+        fut = loop.create_future()
+
+        def _resolver(code, status, _f=fut):
+            if not _f.done():
+                _f.set_result(code)
+
+        panel._on_run()
+        if panel._process is not None:
+            panel._process.finished.connect(_resolver)
+            exit_code = await fut
+            if exit_code != 0:
+                raise RuntimeError(f"Script exited with code {exit_code}")
+
+    async def _run_flow(self, item: FavoriteItem):
+        """Execute every step of a flow sequentially, stopping on the first error."""
+        steps = item.flow_steps or []
+        total = len(steps)
+        self.statusBar().showMessage(f"▶ Running flow '{item.display_name}' ({total} steps)…")
+
+        for idx, step in enumerate(steps, 1):
+            kind = step.get("kind")
+            label = step.get("display_name") or kind
+            self.statusBar().showMessage(
+                f"Flow '{item.display_name}': step {idx}/{total} — {label}"
+            )
+            try:
+                if kind == "wait":
+                    await asyncio.sleep(float(step.get("wait_seconds", 0) or 0))
+                elif kind == "script":
+                    await self._run_script_step(step)
+                elif kind == "method":
+                    await self._run_method_step(step)
+                elif kind == "write":
+                    await self._run_write_step(step)
+                else:
+                    logger.warning(f"Unknown flow step kind: {kind}")
+            except Exception as exc:
+                self.statusBar().showMessage(
+                    f"❌ Flow '{item.display_name}' failed at step {idx}/{total} ({label}): {exc}"
+                )
+                logger.error(f"Flow '{item.display_name}' step {idx} failed: {exc}")
+                return
+
+        self.statusBar().showMessage(
+            f"✅ Flow '{item.display_name}' completed ({total} steps)."
+        )
 
 
     def _on_error(self, operation: str, message: str):

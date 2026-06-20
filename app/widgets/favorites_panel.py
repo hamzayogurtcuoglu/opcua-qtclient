@@ -23,6 +23,7 @@ class FavoriteCard(QFrame):
     execute_requested = pyqtSignal(FavoriteItem)
     remove_requested = pyqtSignal(FavoriteItem)
     rename_requested = pyqtSignal(FavoriteItem)
+    edit_requested = pyqtSignal(FavoriteItem)
 
     def __init__(self, item: FavoriteItem, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -57,7 +58,7 @@ class FavoriteCard(QFrame):
             info_layout.addWidget(self.server_label)
 
         # Node ID
-        self.node_id_label = QLabel(self.fav_item.node_id)
+        self.node_id_label = QLabel(self._subtitle_text())
         self.node_id_label.setWordWrap(True)
         info_layout.addWidget(self.node_id_label)
 
@@ -72,6 +73,15 @@ class FavoriteCard(QFrame):
 
         self.update_theme()
         theme_manager.theme_changed.connect(self.update_theme)
+
+    def _subtitle_text(self) -> str:
+        """Secondary line under the name, tailored per favorite type."""
+        if self.fav_item.node_type == NodeType.FLOW:
+            n = len(self.fav_item.flow_steps or [])
+            return f"\ud83e\udde9 {n} step{'s' if n != 1 else ''}"
+        if self.fav_item.node_type == NodeType.WRITE:
+            return f"= {self.fav_item.write_value}  ({self.fav_item.write_data_type})"
+        return self.fav_item.node_id
 
     def update_theme(self):
         self.setStyleSheet(f"""
@@ -115,6 +125,24 @@ class FavoriteCard(QFrame):
             self.badge.setStyleSheet(f"""
                 background-color: {Colors.SUCCESS_BG};
                 color: {Colors.SUCCESS};
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 9px;
+                font-weight: bold;
+            """)
+        elif self.fav_item.node_type == NodeType.WRITE:
+            self.badge.setStyleSheet(f"""
+                background-color: {Colors.WARNING_BG};
+                color: {Colors.WARNING};
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 9px;
+                font-weight: bold;
+            """)
+        elif self.fav_item.node_type == NodeType.FLOW:
+            self.badge.setStyleSheet(f"""
+                background-color: {Colors.ACCENT};
+                color: white;
                 border-radius: 4px;
                 padding: 2px 6px;
                 font-size: 9px;
@@ -172,13 +200,24 @@ class FavoriteCard(QFrame):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
 
-        runnable = self.fav_item.node_type in (NodeType.METHOD, NodeType.SCRIPT)
+        ntype = self.fav_item.node_type
+        runnable = ntype in (NodeType.METHOD, NodeType.SCRIPT, NodeType.WRITE, NodeType.FLOW)
 
         # Run/Call action (only for executable favorites)
         run_action = None
         if runnable:
-            run_text = "▶ Run Script" if self.fav_item.node_type == NodeType.SCRIPT else "▶ Call Method"
+            run_text = {
+                NodeType.SCRIPT: "▶ Run Script",
+                NodeType.METHOD: "▶ Call Method",
+                NodeType.WRITE: "▶ Set Value",
+                NodeType.FLOW: "▶ Run Flow",
+            }.get(ntype, "▶ Run")
             run_action = menu.addAction(run_text)
+
+        # Flow editing
+        edit_action = None
+        if ntype == NodeType.FLOW:
+            edit_action = menu.addAction("🧩 Edit Flow")
 
         # Load/open action — never executes
         load_action = menu.addAction("👁 Open / Load")
@@ -198,6 +237,8 @@ class FavoriteCard(QFrame):
         action = menu.exec(event.globalPos())
         if run_action is not None and action == run_action:
             self.execute_requested.emit(self.fav_item)
+        elif edit_action is not None and action == edit_action:
+            self.edit_requested.emit(self.fav_item)
         elif action == load_action:
             self.clicked.emit(self.fav_item)
         elif action == rename_action:
@@ -240,6 +281,12 @@ class FavoritesPanel(QWidget):
         self.title_label = QLabel("Favorites")
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
+
+        self.new_flow_btn = QPushButton("🧩 New Flow")
+        self.new_flow_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.new_flow_btn.setToolTip("Create a flow that chains methods, scripts and set-value actions")
+        self.new_flow_btn.clicked.connect(self._create_flow)
+        header_layout.addWidget(self.new_flow_btn)
 
         self.clear_all_btn = QPushButton("🗑 Clear All")
         self.clear_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -302,14 +349,37 @@ class FavoritesPanel(QWidget):
             }}
         """)
 
+        self.new_flow_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: 1px solid {Colors.BORDER};
+                color: {Colors.ACCENT};
+                font-size: 11px;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+                border-color: {Colors.ACCENT};
+            }}
+        """)
+
     def add_favorite(self, node_id: str, display_name: str, node_type: NodeType,
                      server_url: str = "", server_name: str = "", args: list = None):
         """Add a node to favorites."""
-        # Check if already exists (skip for methods and scripts so we can have duplicates with diff args)
-        if node_type not in (NodeType.METHOD, NodeType.SCRIPT):
+        # Check if already exists (skip for methods, scripts and writes so we can
+        # have duplicates with different args / values).
+        if node_type not in (NodeType.METHOD, NodeType.SCRIPT, NodeType.WRITE):
             for card in self._cards:
                 if card.fav_item.node_id == node_id and card.fav_item.node_type == node_type:
                     return
+
+        write_value = ""
+        write_data_type = ""
+        if node_type == NodeType.WRITE and args:
+            # The shared pipeline carries [value, data_type] in args.
+            write_value = str(args[0]) if len(args) > 0 else ""
+            write_data_type = str(args[1]) if len(args) > 1 else ""
 
         item = FavoriteItem(
             display_name=display_name,
@@ -318,6 +388,8 @@ class FavoritesPanel(QWidget):
             server_url=server_url,
             server_name=server_name,
             input_args=args or [],
+            write_value=write_value,
+            write_data_type=write_data_type,
         )
         self._add_card(item)
         self._save_favorites()
@@ -336,6 +408,7 @@ class FavoritesPanel(QWidget):
         card.execute_requested.connect(self.favorite_execute.emit)
         card.remove_requested.connect(self._remove_favorite)
         card.rename_requested.connect(self._rename_favorite)
+        card.edit_requested.connect(self._edit_flow)
         self._cards.append(card)
         self.list_layout.insertWidget(self.list_layout.count() - 1, card)
 
@@ -369,6 +442,7 @@ class FavoritesPanel(QWidget):
                     new_card.execute_requested.connect(self.favorite_execute.emit)
                     new_card.remove_requested.connect(self._remove_favorite)
                     new_card.rename_requested.connect(self._rename_favorite)
+                    new_card.edit_requested.connect(self._edit_flow)
                     self._cards.insert(
                         next((i for i, c in enumerate(self._cards)
                               if self.list_layout.indexOf(c) > pos), len(self._cards)),
@@ -413,6 +487,67 @@ class FavoritesPanel(QWidget):
                 json.dump(data, f, indent=2)
         except Exception:
             pass
+
+    def _runnable_favorites(self) -> list[FavoriteItem]:
+        """Favorites that can be used as flow steps (methods, scripts, set-values)."""
+        return [
+            card.fav_item for card in self._cards
+            if card.fav_item.node_type in (NodeType.METHOD, NodeType.SCRIPT, NodeType.WRITE)
+        ]
+
+    def _create_flow(self):
+        """Open the flow editor to build a new flow from existing favorites."""
+        from app.dialogs.flow_dialog import FlowDialog
+
+        available = self._runnable_favorites()
+        if not available:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "No actions yet",
+                "Add at least one method, script or set-value to your favorites first.\n"
+                "Those become the building blocks of a flow.",
+            )
+            return
+
+        dialog = FlowDialog(available, parent=self)
+        if dialog.exec():
+            name, steps = dialog.get_result()
+            if name and steps:
+                item = FavoriteItem(
+                    display_name=name,
+                    node_id="",
+                    node_type=NodeType.FLOW,
+                    flow_steps=steps,
+                )
+                self._add_card(item)
+                self._save_favorites()
+
+    def _edit_flow(self, item: FavoriteItem):
+        """Open the flow editor to modify an existing flow."""
+        from app.dialogs.flow_dialog import FlowDialog
+
+        available = self._runnable_favorites()
+        dialog = FlowDialog(available, parent=self, flow=item)
+        if dialog.exec():
+            name, steps = dialog.get_result()
+            item.display_name = name or item.display_name
+            item.flow_steps = steps
+            # Rebuild the card in place.
+            for card in self._cards:
+                if card.fav_item.id == item.id:
+                    pos = self.list_layout.indexOf(card)
+                    self._cards.remove(card)
+                    card.deleteLater()
+                    new_card = FavoriteCard(item)
+                    new_card.clicked.connect(self.favorite_clicked.emit)
+                    new_card.execute_requested.connect(self.favorite_execute.emit)
+                    new_card.remove_requested.connect(self._remove_favorite)
+                    new_card.rename_requested.connect(self._rename_favorite)
+                    new_card.edit_requested.connect(self._edit_flow)
+                    self._cards.insert(min(pos, len(self._cards)), new_card)
+                    self.list_layout.insertWidget(pos, new_card)
+                    break
+            self._save_favorites()
 
     def save(self):
         """Public hook to persist favorites (e.g. on app close)."""

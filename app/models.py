@@ -26,6 +26,8 @@ class NodeType(Enum):
     REFERENCE_TYPE = "ReferenceType"
     DATA_TYPE = "DataType"
     SCRIPT = "Script"
+    WRITE = "Write"
+    FLOW = "Flow"
     UNKNOWN = "Unknown"
 
 
@@ -103,6 +105,11 @@ class FavoriteItem:
     server_name: str = ""
     input_args: list = field(default_factory=list)
     script_content: str = ""
+    # Write/"set variable" favorites store the value and its data type.
+    write_value: str = ""
+    write_data_type: str = ""
+    # Flow favorites store an ordered list of step dicts.
+    flow_steps: list = field(default_factory=list)
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     def to_dict(self) -> dict:
@@ -115,6 +122,9 @@ class FavoriteItem:
             "server_name": self.server_name,
             "input_args": self.input_args,
             "script_content": self.script_content,
+            "write_value": self.write_value,
+            "write_data_type": self.write_data_type,
+            "flow_steps": self.flow_steps,
         }
 
     @classmethod
@@ -131,6 +141,9 @@ class FavoriteItem:
             server_name=data.get("server_name", ""),
             input_args=data.get("input_args", []),
             script_content=data.get("script_content", ""),
+            write_value=data.get("write_value", ""),
+            write_data_type=data.get("write_data_type", ""),
+            flow_steps=data.get("flow_steps", []),
             id=data.get("id", uuid.uuid4().hex),
         )
 
