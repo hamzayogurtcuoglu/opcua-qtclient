@@ -365,7 +365,8 @@ class FavoritesPanel(QWidget):
         """)
 
     def add_favorite(self, node_id: str, display_name: str, node_type: NodeType,
-                     server_url: str = "", server_name: str = "", args: list = None):
+                     server_url: str = "", server_name: str = "", args: list = None,
+                     browse_path: list = None):
         """Add a node to favorites."""
         # Check if already exists (skip for methods, scripts and writes so we can
         # have duplicates with different args / values).
@@ -390,9 +391,29 @@ class FavoritesPanel(QWidget):
             input_args=args or [],
             write_value=write_value,
             write_data_type=write_data_type,
+            browse_path=browse_path or [],
         )
         self._add_card(item)
         self._save_favorites()
+
+    def update_browse_path(self, item_id: str, browse_path: list, node_id: str = ""):
+        """Store/refresh the resolved browse path (and node id) for a favorite.
+
+        Used to self-heal older favorites and to keep node ids current after a
+        server restart reassigns them.
+        """
+        changed = False
+        for card in self._cards:
+            if card.fav_item.id == item_id:
+                if browse_path and card.fav_item.browse_path != browse_path:
+                    card.fav_item.browse_path = browse_path
+                    changed = True
+                if node_id and card.fav_item.node_id != node_id:
+                    card.fav_item.node_id = node_id
+                    changed = True
+                break
+        if changed:
+            self._save_favorites()
 
     def clear_all(self):
         """Remove all favorites."""

@@ -559,9 +559,10 @@ class MainWindow(QMainWindow):
             tab = ConnectionTab(server_info.name, url, client)
             tab.disconnect_requested.connect(self._on_disconnect_url)
             tab.add_to_favorites.connect(
-                lambda nid, name, ntype, args: self.favorites_panel.add_favorite(
-                    nid, name, ntype, url, server_info.name, args
-                )
+                lambda nid, name, ntype, args, _url=url, _sn=server_info.name, _tab=tab:
+                    asyncio.ensure_future(
+                        self._add_favorite_with_path(_tab, _url, _sn, nid, name, ntype, args)
+                    )
             )
             self._tabs[url] = tab
 
@@ -855,6 +856,12 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             self.tab_widget.setCurrentIndex(idx)
 
+        # Re-resolve the node id via its browse path so the favorite keeps
+        # working after a server restart reassigned numeric node ids.
+        item.node_id = await self._resolve_node_for(
+            tab, item.node_id, item.browse_path, item.id
+        )
+
         # 2. Load node info
         try:
             info = await tab.opcua_client.read_node_attributes(
@@ -888,6 +895,42 @@ class MainWindow(QMainWindow):
             if execute:
                 tab.node_info.call_method_tab._on_call()
 
+
+    async def _add_favorite_with_path(self, tab, url, server_name, node_id, name, ntype, args):
+        """Capture a stable browse path before saving an address-space favorite.
+
+        The browse path lets the favorite be re-resolved after a server restart
+        reassigns numeric node ids.
+        """
+        browse_path = []
+        if node_id and ntype in (NodeType.METHOD, NodeType.VARIABLE, NodeType.WRITE):
+            try:
+                browse_path = await tab.opcua_client.get_browse_path(node_id)
+            except Exception:
+                browse_path = []
+        self.favorites_panel.add_favorite(
+            node_id, name, ntype, url, server_name, args, browse_path
+        )
+
+    async def _resolve_node_for(self, tab, node_id: str, browse_path: list,
+                                item_id: str = "") -> str:
+        """Resolve the current node id for a favorite/step.
+
+        When a browse path is available it is walked from Root to find the node
+        even if its numeric id changed since the favorite was saved. The stored
+        favorite is updated with the new id so subsequent calls stay fast.
+        """
+        resolved = node_id
+        if browse_path:
+            try:
+                rid = await tab.opcua_client.resolve_browse_path(browse_path)
+            except Exception:
+                rid = None
+            if rid:
+                resolved = rid
+                if item_id and rid != node_id:
+                    self.favorites_panel.update_browse_path(item_id, browse_path, rid)
+        return resolved
 
     async def _ensure_tab(self, server_url: str):
         """Return a connected ConnectionTab for the given server URL.
@@ -936,6 +979,7 @@ class MainWindow(QMainWindow):
             "server_url": item.server_url,
             "write_value": item.write_value,
             "write_data_type": item.write_data_type,
+            "browse_path": item.browse_path,
             "display_name": item.display_name,
         })
 
@@ -945,15 +989,18 @@ class MainWindow(QMainWindow):
         if tab is None:
             raise RuntimeError("No server connection available for set-value step")
 
+        node_id = await self._resolve_node_for(
+            tab, step["node_id"], step.get("browse_path", [])
+        )
         data_type = step.get("write_data_type") or "String"
         value = self._convert_write_value(step.get("write_value", ""), data_type)
         ok = await tab.opcua_client.write_value(
-            step["node_id"], value, data_type, tab.server_name
+            node_id, value, data_type, tab.server_name
         )
         if not ok:
-            raise RuntimeError(f"Write to {step['node_id']} failed")
+            raise RuntimeError(f"Write to {node_id} failed")
         self.statusBar().showMessage(
-            f"✅ Set {step.get('display_name') or step['node_id']} = {step.get('write_value', '')}"
+            f"✅ Set {step.get('display_name') or node_id} = {step.get('write_value', '')}"
         )
 
     async def _run_method_step(self, step: dict):
@@ -965,8 +1012,10 @@ class MainWindow(QMainWindow):
             server_url=step.get("server_url", ""),
             server_name=step.get("server_name", ""),
             input_args=step.get("input_args", []),
+            browse_path=step.get("browse_path", []),
         )
-        # Load the method into the UI (no call yet).
+        # Load the method into the UI (no call yet). _activate_favorite resolves
+        # the node via its browse path so a restarted server still works.
         await self._activate_favorite(fav, execute=False)
 
         tab = self._tabs.get(step.get("server_url", ""))

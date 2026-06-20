@@ -108,6 +108,9 @@ class FavoriteItem:
     # Write/"set variable" favorites store the value and its data type.
     write_value: str = ""
     write_data_type: str = ""
+    # Browse path (list of qualified browse names from Root) lets a favorite
+    # survive server restarts that reassign numeric node ids.
+    browse_path: list = field(default_factory=list)
     # Flow favorites store an ordered list of step dicts.
     flow_steps: list = field(default_factory=list)
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -124,6 +127,7 @@ class FavoriteItem:
             "script_content": self.script_content,
             "write_value": self.write_value,
             "write_data_type": self.write_data_type,
+            "browse_path": self.browse_path,
             "flow_steps": self.flow_steps,
         }
 
@@ -143,6 +147,7 @@ class FavoriteItem:
             script_content=data.get("script_content", ""),
             write_value=data.get("write_value", ""),
             write_data_type=data.get("write_data_type", ""),
+            browse_path=data.get("browse_path", []),
             flow_steps=data.get("flow_steps", []),
             id=data.get("id", uuid.uuid4().hex),
         )

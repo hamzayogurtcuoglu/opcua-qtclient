@@ -861,3 +861,52 @@ class OpcUaClient(QObject):
         except Exception:
             pass
         return None
+
+    async def get_browse_path(self, node_id: str) -> list[str]:
+        """Return the browse path of a node as a list of qualified browse names.
+
+        The path runs from the address-space Root down to the node itself, e.g.
+        ``["0:Root", "0:Objects", "2:drawer_out_sim", "2:GetWorkPlace"]``. This
+        path is stable across server restarts even when the numeric node id is
+        reassigned, so it lets favorites survive a simulator being stopped and
+        started again.
+        """
+        if not self._client:
+            return []
+        try:
+            async with self._request_lock:
+                node = self._get_node(node_id)
+                nodes = await node.get_path()
+                path = []
+                for n in nodes:
+                    bn = await n.read_browse_name()
+                    path.append(bn.to_string())
+            return path
+        except Exception as e:
+            logger.warning(f"get_browse_path failed for {node_id}: {e}")
+            return []
+
+    async def resolve_browse_path(self, path: list[str]) -> Optional[str]:
+        """Resolve a stored browse path back to the current node id.
+
+        Returns the node id string if the path can be walked from Root, else
+        ``None`` (caller should fall back to the stored node id).
+        """
+        if not self._client or not path:
+            return None
+        try:
+            # The path from get_browse_path starts at Root; get_child walks
+            # relative to root, so drop the leading Root segment.
+            rel = list(path)
+            if rel and rel[0].split(":")[-1] == "Root":
+                rel = rel[1:]
+            if not rel:
+                return None
+            async with self._request_lock:
+                root = self._client.nodes.root
+                node = await root.get_child(rel)
+            return node.nodeid.to_string()
+        except Exception as e:
+            logger.warning(f"resolve_browse_path failed for {path}: {e}")
+            return None
+

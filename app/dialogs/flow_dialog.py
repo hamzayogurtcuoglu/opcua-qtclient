@@ -40,6 +40,7 @@ def favorite_to_step(fav: FavoriteItem) -> dict:
         "script_content": fav.script_content,
         "write_value": fav.write_value,
         "write_data_type": fav.write_data_type,
+        "browse_path": list(fav.browse_path or []),
         "wait_seconds": 0.0,
     }
 
@@ -56,6 +57,7 @@ def wait_step(seconds: float) -> dict:
         "script_content": "",
         "write_value": "",
         "write_data_type": "",
+        "browse_path": [],
         "wait_seconds": float(seconds),
     }
 
