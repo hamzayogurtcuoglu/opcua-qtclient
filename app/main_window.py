@@ -25,6 +25,7 @@ from app.widgets.server_panel import ServerPanel
 from app.widgets.connection_tab import ConnectionTab
 from app.widgets.favorites_panel import FavoritesPanel
 from app.widgets.script_runner import ScriptRunnerPanel
+from app.widgets.scene3d import Scene3DPanel
 from app.dialogs.add_server_dialog import AddServerDialog
 from app.dialogs.discovery_dialog import DiscoveryDialog
 from app.dialogs.settings_dialog import SettingsDialog
@@ -43,6 +44,7 @@ class MainWindow(QMainWindow):
         self._clients: dict[str, OpcUaClient] = {}  # url -> client
         self._tabs: dict[str, ConnectionTab] = {}     # url -> tab
         self._settings: dict = {}
+        self._last_selected_node: str = ""
         self._load_settings()
         
         # Apply theme from settings before setting up UI
@@ -176,6 +178,32 @@ class MainWindow(QMainWindow):
         )
         self.subs_dock.hide()
         self.subs_dock.visibilityChanged.connect(self._on_subs_dock_visibility)
+
+        # ── Floating Dock: 3D Scene Builder ───────────────────────────────────
+        self.scene3d_panel = Scene3DPanel()
+        self.scene3d_panel.set_node_picker(self._active_node_picker)
+
+        self.scene3d_dock = QDockWidget("🧊  3D Scene Builder", self)
+        self.scene3d_dock.setWidget(self.scene3d_panel)
+        self.scene3d_dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea |
+            Qt.DockWidgetArea.RightDockWidgetArea |
+            Qt.DockWidgetArea.BottomDockWidgetArea |
+            Qt.DockWidgetArea.NoDockWidgetArea
+        )
+        self.scene3d_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+        )
+        self.scene3d_dock.setFloating(True)
+        self.scene3d_dock.resize(1100, 720)
+        self.scene3d_dock.move(self.x() + 160, self.y() + 120)
+        self.scene3d_dock.hide()
+        self.scene3d_dock.visibilityChanged.connect(self._on_scene3d_dock_visibility)
+
+        # Keep the 3D scene bound to whichever connection tab is active.
+        self.tab_widget.currentChanged.connect(self._on_active_tab_changed)
 
         # Status bar
         self.statusBar().showMessage("Ready — No active connections")
@@ -456,6 +484,15 @@ class MainWindow(QMainWindow):
         self.subs_btn.toggled.connect(self._toggle_subscriptions)
         self.toolbar.addWidget(self.subs_btn)
 
+        # 3D Scene Builder toggle
+        self.scene3d_btn = QToolButton()
+        self.scene3d_btn.setText("🧊 3D Scene")
+        self.scene3d_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.scene3d_btn.setCheckable(True)
+        self.scene3d_btn.setChecked(False)
+        self.scene3d_btn.toggled.connect(self._toggle_scene3d)
+        self.toolbar.addWidget(self.scene3d_btn)
+
         self.toolbar.addSeparator()
 
         # Import/Export
@@ -569,6 +606,11 @@ class MainWindow(QMainWindow):
             idx = self.tab_widget.addTab(tab, f"● {server_info.name}")
             self.tab_widget.setCurrentIndex(idx)
 
+            # Track node selection so the 3D Scene Builder can bind the
+            # currently selected node, and bind the scene to this client.
+            tab.address_tree.node_selected.connect(self._on_dash_node_selected)
+            self.scene3d_panel.set_client(client)
+
             # Load address space
             await tab.load_address_space()
             self.statusBar().showMessage(f"Connected to {server_info.name}")
@@ -655,6 +697,42 @@ class MainWindow(QMainWindow):
             self.subs_dock.raise_()
         else:
             self.subs_dock.hide()
+
+    # ---- 3D Scene Builder ----
+
+    def _toggle_scene3d(self, checked: bool):
+        if checked:
+            self.scene3d_panel.set_client(self._active_client())
+            self.scene3d_dock.show()
+            self.scene3d_dock.raise_()
+        else:
+            self.scene3d_dock.hide()
+
+    def _on_scene3d_dock_visibility(self, visible: bool):
+        self.scene3d_btn.blockSignals(True)
+        self.scene3d_btn.setChecked(visible)
+        self.scene3d_btn.blockSignals(False)
+
+    def _active_client(self) -> Optional[OpcUaClient]:
+        """Return the OpcUaClient of the currently selected connection tab."""
+        widget = self.tab_widget.currentWidget()
+        if isinstance(widget, ConnectionTab):
+            return widget.opcua_client
+        return None
+
+    def _on_active_tab_changed(self, _index: int):
+        if hasattr(self, "scene3d_panel"):
+            self.scene3d_panel.set_client(self._active_client())
+
+    def _active_node_picker(self) -> Optional[dict]:
+        """Return info about the node currently selected in the active tab."""
+        node_id = getattr(self, "_last_selected_node", "")
+        if not node_id:
+            return None
+        return {"node_id": node_id}
+
+    def _on_dash_node_selected(self, node_id: str):
+        self._last_selected_node = node_id
 
     def _on_unsubscribe_requested(self, server_name: str, node_id: str):
         # Find the client for this server

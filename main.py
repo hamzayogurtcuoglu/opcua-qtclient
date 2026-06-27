@@ -110,6 +110,11 @@ def main():
 
     setup_logging()
 
+    # The embedded 3D Scene Builder uses QtWebEngine (Chromium), which requires
+    # OpenGL contexts to be shared across the app. This attribute must be set
+    # before the QApplication is created.
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+
     # Create application
     app = QApplication(sys.argv)
     app.setStyle("Fusion")

@@ -403,6 +403,22 @@ class OpcUaClient(QObject):
             )
             return None
 
+    async def poll_value(self, node_id: str) -> Any:
+        """Read a variable value WITHOUT logging to history.
+
+        Used by the live 3D scene which polls many nodes frequently; routing those
+        reads through :meth:`read_value` would flood the operation history.
+        """
+        if not self._client:
+            return None
+        try:
+            async with self._request_lock:
+                node = self._get_node(node_id)
+                return await node.read_value()
+        except Exception as e:
+            self._mark_transport_error(e)
+            return None
+
     async def subscribe_node(self, node_id: str, node_name: str = "", period: int = 500) -> bool:
         """Subscribe to data changes for a node."""
         if not self._client:

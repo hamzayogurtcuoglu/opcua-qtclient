@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OPC UA 3D Scene</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f19; }
+    #c { width: 100vw; height: 100vh; display: block; }
+    #hint {
+      position: absolute; top: 10px; left: 12px; color: #9ca3af;
+      font: 12px/1.4 system-ui, sans-serif; pointer-events: none;
+      background: rgba(17,24,39,.6); padding: 6px 10px; border-radius: 8px;
+    }
+    #badge {
+      position: absolute; top: 10px; right: 12px; color: #fff;
+      font: 700 12px system-ui, sans-serif; padding: 6px 12px; border-radius: 999px;
+      background: #4f46e5;
+    }
+    #badge.run { background: #10b981; }
+  </style>
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/OrbitControls.js"></script>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="hint">Design mode — click an object to select</div>
+  <div id="badge">DESIGN</div>
+  <script src="app.js"></script>
+</body>
+</html>
