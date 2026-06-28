@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from typing import Callable, Optional
 
 from PyQt6.QtCore import Qt, QObject, QUrl, QTimer, pyqtSignal, pyqtSlot
@@ -32,7 +33,19 @@ from app.widgets.scene3d.model import (
     Scene3DModel, Object3DConfig, SHAPES, BINDINGS, DRIVES,
 )
 
-_WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
+def _resolve_web_dir() -> str:
+    """Locate the bundled web assets in both dev and PyInstaller builds."""
+    rel = os.path.join("app", "widgets", "scene3d", "web")
+    # When frozen, PyInstaller unpacks data files under sys._MEIPASS.
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        bundled = os.path.join(base, rel)
+        if os.path.isdir(bundled):
+            return bundled
+    return os.path.join(os.path.dirname(__file__), "web")
+
+
+_WEB_DIR = _resolve_web_dir()
 
 _PALETTE = [
     ("box", "⬛ Box"),

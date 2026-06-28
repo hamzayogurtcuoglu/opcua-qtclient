@@ -25,7 +25,7 @@ jobs:
 
       - name: Build Executable with PyInstaller
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "OPCUA_Client" --collect-submodules asyncua main.py
+          pyinstaller --noconfirm --onedir --windowed --name "OPCUA_Client" --collect-submodules asyncua --add-data "app/widgets/scene3d/web;app/widgets/scene3d/web" main.py
 
       - name: Zip Windows Build
         run: |
@@ -56,7 +56,7 @@ jobs:
 
       - name: Build App with PyInstaller
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "OPCUA_Client" --collect-submodules asyncua main.py
+          pyinstaller --noconfirm --onedir --windowed --name "OPCUA_Client" --collect-submodules asyncua --add-data "app/widgets/scene3d/web:app/widgets/scene3d/web" main.py
 
       - name: Zip macOS Build
         run: |
