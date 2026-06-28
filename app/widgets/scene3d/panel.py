@@ -17,13 +17,14 @@ import os
 from typing import Callable, Optional
 
 from PyQt6.QtCore import Qt, QObject, QUrl, QTimer, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QKeySequence, QShortcut
 from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineCore import QWebEngineProfile
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QFormLayout, QDoubleSpinBox, QComboBox, QFrame, QFileDialog, QMessageBox,
-    QColorDialog, QButtonGroup,
+    QColorDialog,
 )
 
 from app.theme import Colors
@@ -74,6 +75,11 @@ class Scene3DPanel(QWidget):
         self._selected: Optional[Object3DConfig] = None
         self._design = True
         self._ready = False
+        self._live = False
+        self._data_sources: list = []
+        self._grids: list = []
+        self._settings: dict = {}
+        self._engine = None
         self._pending: list[str] = []
         self._timers: dict[str, QTimer] = {}
         self._loading_props = False
@@ -103,6 +109,11 @@ class Scene3DPanel(QWidget):
 
         self.view = QWebEngineView()
         self.view.setMinimumSize(560, 420)
+        # Never cache the bundled web assets — otherwise edits to app.js / CSS
+        # don't show up until the WebEngine cache is manually cleared.
+        _profile = self.view.page().profile()
+        _profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.NoCache)
+        _profile.clearHttpCache()
         self._channel = QWebChannel()
         self._bridge = _Bridge(self)
         self._channel.registerObject("bridge", self._bridge)
@@ -119,6 +130,10 @@ class Scene3DPanel(QWidget):
 
         self._refresh_mode_ui()
 
+        # Esc leaves fullscreen.
+        self._esc_shortcut = QShortcut(QKeySequence("Esc"), self)
+        self._esc_shortcut.activated.connect(self._exit_fullscreen)
+
     def _build_topbar(self) -> QHBoxLayout:
         bar = QHBoxLayout()
         bar.setSpacing(8)
@@ -128,18 +143,19 @@ class Scene3DPanel(QWidget):
         bar.addWidget(self.name_edit)
         bar.addStretch(1)
 
-        self.design_btn = QPushButton("✎ Design")
+        # Single Run/Stop toggle — starts/stops live data pulling. While stopped
+        # the scene is in Design mode (editable); while running it pulls live.
         self.run_btn = QPushButton("▶ Run")
-        grp = QButtonGroup(self)
-        for b in (self.design_btn, self.run_btn):
-            b.setCheckable(True)
-            b.setCursor(Qt.CursorShape.PointingHandCursor)
-            grp.addButton(b)
-        self.design_btn.setChecked(True)
-        self.design_btn.clicked.connect(lambda: self._set_mode(True))
-        self.run_btn.clicked.connect(lambda: self._set_mode(False))
-        bar.addWidget(self.design_btn)
+        self.run_btn.setCheckable(True)
+        self.run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.run_btn.toggled.connect(self._toggle_run)
         bar.addWidget(self.run_btn)
+
+        # Fullscreen toggle (Esc also exits).
+        self.fullscreen_btn = QPushButton("⛶ Fullscreen")
+        self.fullscreen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.fullscreen_btn.clicked.connect(self._toggle_fullscreen)
+        bar.addWidget(self.fullscreen_btn)
 
         sep = QLabel("|")
         sep.setStyleSheet(f"color:{Colors.BORDER_LIGHT};")
@@ -207,17 +223,26 @@ class Scene3DPanel(QWidget):
         self.p_x = self._spin(-1000, 1000, 0.0)
         self.p_y = self._spin(-1000, 1000, 0.5)
         self.p_z = self._spin(-1000, 1000, 0.0)
-        self.p_size = self._spin(0.1, 100, 1.0)
         self.p_x.valueChanged.connect(lambda v: self._set_attr("x", v))
         self.p_y.valueChanged.connect(lambda v: self._set_attr("y", v))
         self.p_z.valueChanged.connect(lambda v: self._set_attr("z", v))
-        self.p_size.valueChanged.connect(lambda v: self._set_attr("size", v))
         pos_row = QHBoxLayout()
         for w in (self.p_x, self.p_y, self.p_z):
             pos_row.addWidget(w)
         pos_wrap = QWidget(); pos_wrap.setLayout(pos_row)
         form.addRow("X / Y / Z", pos_wrap)
-        form.addRow("Size", self.p_size)
+
+        self.p_sx = self._spin(0.05, 1000, 1.0)
+        self.p_sy = self._spin(0.05, 1000, 1.0)
+        self.p_sz = self._spin(0.05, 1000, 1.0)
+        self.p_sx.valueChanged.connect(lambda v: self._set_attr("sx", v))
+        self.p_sy.valueChanged.connect(lambda v: self._set_attr("sy", v))
+        self.p_sz.valueChanged.connect(lambda v: self._set_attr("sz", v))
+        dim_row = QHBoxLayout()
+        for w in (self.p_sx, self.p_sy, self.p_sz):
+            dim_row.addWidget(w)
+        dim_wrap = QWidget(); dim_wrap.setLayout(dim_row)
+        form.addRow("W / H / D", dim_wrap)
 
         self.p_node = QLineEdit()
         self.p_node.setPlaceholderText("ns=2;i=5")
@@ -354,7 +379,9 @@ class Scene3DPanel(QWidget):
         self.p_x.setValue(cfg.x)
         self.p_y.setValue(cfg.y)
         self.p_z.setValue(cfg.z)
-        self.p_size.setValue(cfg.size)
+        self.p_sx.setValue(cfg.sx)
+        self.p_sy.setValue(cfg.sy)
+        self.p_sz.setValue(cfg.sz)
         self.p_node.setText(cfg.node_id)
         self.p_binding.setCurrentText(cfg.binding)
         self.p_drive.setCurrentText(cfg.drive)
@@ -380,9 +407,9 @@ class Scene3DPanel(QWidget):
 
     def _set_props_enabled(self, on: bool):
         for w in (self.p_title, self.p_shape, self.p_color, self.p_x, self.p_y,
-                  self.p_z, self.p_size, self.p_node, self.pick_btn, self.p_binding,
-                  self.p_drive, self.p_min, self.p_max, self.p_write, self.p_args,
-                  self.delete_btn):
+                  self.p_z, self.p_sx, self.p_sy, self.p_sz, self.p_node,
+                  self.pick_btn, self.p_binding, self.p_drive, self.p_min,
+                  self.p_max, self.p_write, self.p_args, self.delete_btn):
             w.setEnabled(on)
 
     @staticmethod
@@ -404,6 +431,8 @@ class Scene3DPanel(QWidget):
             self._bridge.toScene.emit(msg)
         self._pending.clear()
         self._push_scene()
+        if self._grids:
+            self._send({"type": "grids", "grids": self._grids})
 
     def _on_object_selected(self, obj_id: str):
         cfg = self._find(obj_id)
@@ -411,10 +440,22 @@ class Scene3DPanel(QWidget):
         self._load_props(cfg)
 
     def _on_object_clicked(self, obj_id: str):
+        cfg = self._find(obj_id)
+        if cfg is None:
+            return
+        # Generic clickable action (e.g. drawer Open/Close, E-stop) — works in
+        # any mode and calls an OPC UA method directly.
+        action = getattr(cfg, "action", None)
+        if action and action.get("method"):
+            ep = action.get("endpoint") or self._default_endpoint()
+            if not ep:
+                self._status("⚠ No endpoint for this action")
+                return
+            asyncio.ensure_future(self._run_action(ep, action))
+            return
         if self._design:
             return
-        cfg = self._find(obj_id)
-        if cfg is None or not cfg.node_id:
+        if not cfg.node_id:
             return
         if not self._client or not getattr(self._client, "is_connected", False):
             self._status("⚠ Not connected")
@@ -428,16 +469,30 @@ class Scene3DPanel(QWidget):
             )
             self._status(f"Wrote {value} → {cfg.node_id}")
 
+    async def _run_action(self, endpoint: str, action: dict):
+        from app.widgets.scene3d.live_data import call_action
+        obj, method = action.get("object"), action.get("method")
+        args = action.get("args", [])
+        try:
+            r = await call_action(endpoint, obj, method, args)
+            self._status(f"✔ {obj}.{method}{tuple(args)} → {r}")
+        except Exception as e:
+            self._status(f"⚠ {method} failed: {e}")
+
     async def _call_async(self, cfg: Object3DConfig):
         parent_id = cfg.parent_id or await self._client.get_parent_node_id(cfg.node_id)
         result = await self._client.call_method(parent_id, cfg.node_id, list(cfg.method_args))
         self._status(f"Called {cfg.title} → {result}")
 
     # ── mode + runtime ────────────────────────────────────────────────────
+    def _toggle_run(self, on: bool):
+        """Run = pull live data (button becomes Stop); Stop = back to design."""
+        self.run_btn.setText("⏹ Stop" if on else "▶ Run")
+        self._set_mode(not on)
+        self._toggle_live(on)
+
     def _set_mode(self, design: bool):
         self._design = design
-        self.design_btn.setChecked(design)
-        self.run_btn.setChecked(not design)
         self._send({"type": "mode", "design": design})
         self._refresh_mode_ui()
         if design:
@@ -445,25 +500,144 @@ class Scene3DPanel(QWidget):
         else:
             self._start_runtime()
 
+    def _toggle_fullscreen(self):
+        w = self.window()
+        if w is None:
+            return
+        if w.isFullScreen():
+            w.showNormal()
+            self.fullscreen_btn.setText("⛶ Fullscreen")
+        else:
+            w.showFullScreen()
+            self.fullscreen_btn.setText("🗗 Exit (Esc)")
+
+    def _exit_fullscreen(self):
+        w = self.window()
+        if w is not None and w.isFullScreen():
+            w.showNormal()
+            self.fullscreen_btn.setText("⛶ Fullscreen")
+
     def _refresh_mode_ui(self):
         for b in getattr(self, "_palette_buttons", []):
             b.setEnabled(self._design)
         self._props_panel.setVisible(self._design)
 
-    def _start_runtime(self):
-        if not self._client or not getattr(self._client, "is_connected", False):
-            self._status("⚠ Connect to a server before running")
+    # ── Live data (generic, JSON-configured) ──────────────────────────────
+    def _toggle_live(self, on: bool):
+        self._live = on
+        self._push_scene()
+        if on:
+            from app.widgets.scene3d.live_data import LiveDataEngine
+            self._engine = LiveDataEngine(self._data_sources)
+            if not self._engine.has_sources():
+                self._status("⚠ No dataSources in this scene")
+                return
+            self._live_busy = False
+            self._poll_ms = None
+            self._live_timer = QTimer(self)
+            self._live_timer.setInterval(int((self._settings or {}).get("pollIntervalMs", 500)))
+            self._live_timer.timeout.connect(self._tick_live)
+            self._live_timer.start()
+            self._status(f"🔴 Live — polling {len(self._data_sources)} source(s)…")
+            # Optionally re-tune the poll period from a configured variable.
+            asyncio.ensure_future(self._track_poll_rate())
+        else:
+            if getattr(self, "_live_timer", None):
+                self._live_timer.stop()
+                self._live_timer.deleteLater()
+                self._live_timer = None
+            eng = self._engine
+            self._engine = None
+            if eng is not None:
+                asyncio.ensure_future(eng.aclose())
+            self._send({"type": "anchors-clear"})
+            self._status("Live data OFF")
+
+    def _tick_live(self):
+        if getattr(self, "_live_busy", False) or not getattr(self, "_engine", None):
             return
+        self._live_busy = True
+        asyncio.ensure_future(self._poll_live())
+
+    def _default_endpoint(self) -> str:
+        return self._data_sources[0].get("endpoint", "") if self._data_sources else ""
+
+    async def _track_poll_rate(self):
+        """Re-tune the poll period from a configured variable, if any.
+
+        Driven entirely by the scene's ``settings.pollRate`` block
+        ({endpoint, object, variable, scale, minMs}); when absent the fixed
+        ``settings.pollIntervalMs`` is kept.
+        """
+        if not getattr(self, "_engine", None):
+            return
+        cfg = (self._settings or {}).get("pollRate")
+        if not cfg:
+            return
+        ep = cfg.get("endpoint") or self._default_endpoint()
+        if not ep:
+            return
+        try:
+            val = float(await self._engine.read_single(
+                ep, cfg["object"], cfg["variable"]))
+        except Exception:
+            return
+        ms = max(int(cfg.get("minMs", 100)),
+                 int(val * float(cfg.get("scale", 1000))))
+        if ms == getattr(self, "_poll_ms", None):
+            return
+        self._poll_ms = ms
+        if getattr(self, "_live_timer", None):
+            self._live_timer.setInterval(ms)
+
+    async def _poll_live(self):
+        try:
+            results = await self._engine.poll()
+            renders = {s["id"]: s.get("render", "tube") for s in self._data_sources}
+            ok = tubes = 0
+            for src_id, res in results.items():
+                if res is None:
+                    continue
+                ok += 1
+                render = renders.get(src_id, "tube")
+                if render == "racks":
+                    self._send({"type": "racks", "id": src_id, "regions": res})
+                    tubes += sum(len(r.get("occ", []))
+                                 for reg in res.values() for r in reg.values())
+                elif render == "color":
+                    self._send({"type": "colors", "id": src_id, "colors": res})
+                elif render == "panel":
+                    self._send({"type": "panel", "id": src_id, "rows": res.get("rows", [])})
+                else:
+                    self._send({"type": "anchors", "id": src_id,
+                                "present": res, "render": render})
+                    tubes += sum(1 for v in res.values() if v == 2)
+            # Re-tune the poll rate if a rate source is configured.
+            await self._track_poll_rate()
+            if ok:
+                iv = self._live_timer.interval() if getattr(self, "_live_timer", None) else 0
+                self._status(f"🔴 Live — {ok} src · {tubes} tube(s) · {iv} ms")
+            else:
+                self._status("⚠ Live — sources unreachable (check endpoints)")
+        finally:
+            self._live_busy = False
+
+    def _start_runtime(self):
         self._stop_runtime()
+        bound = [c for c in self._objects if c.binding == "read" and c.node_id]
+        if not bound:
+            return  # purely live-data scene — the engine handles everything
+        if not self._client or not getattr(self._client, "is_connected", False):
+            self._status("⚠ Connect to a server to poll bound nodes")
+            return
         count = 0
-        for cfg in self._objects:
-            if cfg.binding == "read" and cfg.node_id:
-                timer = QTimer(self)
-                timer.setInterval(500)
-                timer.timeout.connect(lambda c=cfg: self._poll(c))
-                timer.start()
-                self._timers[cfg.id] = timer
-                count += 1
+        for cfg in bound:
+            timer = QTimer(self)
+            timer.setInterval(500)
+            timer.timeout.connect(lambda c=cfg: self._poll(c))
+            timer.start()
+            self._timers[cfg.id] = timer
+            count += 1
         self._status(f"▶ Running — polling {count} node(s)")
 
     def _stop_runtime(self):
@@ -505,7 +679,9 @@ class Scene3DPanel(QWidget):
         )
         if not path:
             return
-        model = Scene3DModel(name=self.name_edit.text() or "Scene", objects=self._objects)
+        model = Scene3DModel(name=self.name_edit.text() or "Scene", objects=self._objects,
+                             data_sources=self._data_sources, grids=self._grids,
+                             settings=self._settings)
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(model.to_dict(), f, indent=2)
@@ -528,10 +704,15 @@ class Scene3DPanel(QWidget):
             return
         self.name_edit.setText(model.name)
         self._objects = model.objects
+        self._data_sources = model.data_sources
+        self._grids = model.grids
+        self._settings = model.settings
         self._selected = None
         self._push_scene()
+        self._send({"type": "grids", "grids": self._grids})
         self._load_props(None)
-        self._status(f"Loaded {len(model.objects)} object(s)")
+        src = f" · {len(model.data_sources)} data source(s)" if model.data_sources else ""
+        self._status(f"Loaded {len(model.objects)} object(s){src}")
 
     def _on_clear(self):
         if QMessageBox.question(self, "Clear scene", "Remove all objects?") \

@@ -18,6 +18,19 @@
       background: #4f46e5;
     }
     #badge.run { background: #10b981; }
+    #panel {
+      position: absolute; top: 56px; left: 12px; display: none;
+      min-width: 190px; max-height: 80vh; overflow: auto;
+      background: rgba(17,24,39,.82); border: 1px solid #374151;
+      border-radius: 10px; padding: 8px 10px; color: #e5e7eb;
+      font: 11px/1.4 system-ui, sans-serif;
+    }
+    #panel .panel-title { color: #9ca3af; font-weight: 800; font-size: 10px;
+      letter-spacing: .06em; margin-bottom: 6px; }
+    #panel .panel-row { display: flex; align-items: center; gap: 7px; padding: 2px 0; }
+    #panel .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    #panel .pl { color: #cbd5e1; min-width: 96px; }
+    #panel .pv { color: #f9fafb; font-weight: 700; }
   </style>
   <script src="vendor/three.min.js"></script>
   <script src="vendor/OrbitControls.js"></script>
@@ -27,6 +40,15 @@
   <canvas id="c"></canvas>
   <div id="hint">Design mode — click an object to select</div>
   <div id="badge">DESIGN</div>
-  <script src="app.js"></script>
+  <div id="panel"></div>
+  <!-- Load app.js with a fresh URL each time so edits are never masked by the
+       WebEngine cache. -->
+  <script>
+    (function () {
+      var s = document.createElement("script");
+      s.src = "app.js?t=" + Date.now();
+      document.body.appendChild(s);
+    })();
+  </script>
 </body>
 </html>
